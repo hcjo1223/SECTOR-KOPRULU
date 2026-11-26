@@ -67,7 +67,7 @@ export const SurvivorTitle: React.FC = () => {
               <img
                 src={getSpriteDataUrl(e.sprite, e.palette)}
                 alt={e.name}
-                className="pixelated h-7 w-7"
+                className="pixelated h-9 w-9"
               />
               <span className="font-mono-tech text-[10px] text-slate-300">
                 {e.name}
@@ -83,7 +83,7 @@ export const SurvivorTitle: React.FC = () => {
 
 const UnitChip: React.FC<{ src: string; label: string }> = ({ src, label }) => (
   <div className="flex flex-col items-center" title={label}>
-    <img src={src} alt={label} className="pixelated h-9 w-9" />
+    <img src={src} alt={label} className="pixelated h-11 w-11" />
     <span className="mt-0.5 w-full truncate text-center text-[8px] text-slate-400">{label}</span>
   </div>
 );

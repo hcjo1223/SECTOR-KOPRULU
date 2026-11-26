@@ -4,8 +4,8 @@ import { useSurvivorStore } from '../store/useSurvivorStore';
 import { SurvivorInput } from './SurvivorInput';
 import { SurvivorRenderer, VIRTUAL_HEIGHT, VIRTUAL_WIDTH } from './SurvivorRenderer';
 
-/** 화면 짧은 변이 대략 이 논리 픽셀 수가 되도록 정수 배율을 고른다 */
-const TARGET_SHORT_SIDE = 240;
+/** 화면 짧은 변이 대략 이 논리 픽셀 수가 되도록 정수 배율을 고른다 (32x32 스프라이트 최적 해상도) */
+const TARGET_SHORT_SIDE = 320;
 
 const DT_MS = SURVIVOR_DT * 1000;
 const HUD_SYNC_MS = 100;

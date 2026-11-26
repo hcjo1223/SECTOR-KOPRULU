@@ -295,10 +295,10 @@ export class SurvivorRenderer {
 
     // ── 2. 철갑 연합(IRONCLAD) 포진(Entrench) 전술 방어선 & 성휘 교단(LUMEN) 보호막 오라
     if (engine.isEntrenched) {
-      const perimR = 20 * engine.rings + 12;
+      const perimR = 26 * engine.rings + 16;
       const pulse = 0.45 + 0.18 * Math.sin(this.timeSec * 6);
       drawPixelCircle(gf, camX, camY, perimR, accentCol, pulse, 1, 2);
-      drawPixelCircle(gf, camX, camY, 10, accentCol, pulse * 0.85, 1, 2);
+      drawPixelCircle(gf, camX, camY, 14, accentCol, pulse * 0.85, 1, 2);
       // 4방향 전술 바리케이드 셰브론 파일런
       const dirs = [
         [1, 0],
@@ -318,12 +318,12 @@ export class SurvivorRenderer {
     if (engine.faction.id === 'LUMEN' && c.shield > 0) {
       const regenActive = c.sinceHitSec >= 2.5;
       const shieldAlpha = regenActive ? 0.55 + 0.2 * Math.sin(this.timeSec * 8) : 0.3;
-      drawPixelCircle(gf, camX, camY - 2, 10, 0x5fd8f0, shieldAlpha, 1, 2);
+      drawPixelCircle(gf, camX, camY - 6, 15, 0x5fd8f0, shieldAlpha, 1, 2);
       if (regenActive) {
         for (let k = 0; k < 4; k += 1) {
           const ang = this.timeSec * 3.5 + (k * Math.PI) / 2;
-          const mx = Math.round(camX + Math.cos(ang) * 10);
-          const my = Math.round(camY - 2 + Math.sin(ang) * 10);
+          const mx = Math.round(camX + Math.cos(ang) * 15);
+          const my = Math.round(camY - 6 + Math.sin(ang) * 15);
           gf.rect(mx, my, 2, 2).fill({ color: 0xe6ffff, alpha: 0.9 });
         }
       }
@@ -333,8 +333,8 @@ export class SurvivorRenderer {
     const cx = Math.round(camX);
     const cy = Math.round(camY);
     // 지휘관 발밑 그림자 & 진영 오라 링
-    gf.rect(cx - 5, cy + 2, 10, 3).fill({ color: 0x04060a, alpha: 0.55 });
-    drawPixelCircle(gf, cx, cy + 1, 8, primaryCol, 0.55, 1, 2);
+    gf.rect(cx - 8, cy + 2, 16, 4).fill({ color: 0x04060a, alpha: 0.55 });
+    drawPixelCircle(gf, cx, cy + 1, 12, primaryCol, 0.55, 1, 2);
 
     const fx = c.dirX;
     const fy = c.dirY;
@@ -347,10 +347,10 @@ export class SurvivorRenderer {
         const ga = faceAngle + sign * guideHalf;
         drawPixelLine(
           gf,
-          cx + Math.cos(ga) * 14,
-          cy + Math.sin(ga) * 14,
-          cx + Math.cos(ga) * 34,
-          cy + Math.sin(ga) * 34,
+          cx + Math.cos(ga) * 18,
+          cy + Math.sin(ga) * 18,
+          cx + Math.cos(ga) * 42,
+          cy + Math.sin(ga) * 42,
           accentCol,
           0.32,
           1,
@@ -360,9 +360,9 @@ export class SurvivorRenderer {
     }
 
     // 전방 조준 셰브론 레티클 (1px 외곽선 + 황금 픽셀 화살촉)
-    const tipX = Math.round(camX + fx * 24);
-    const tipY = Math.round(camY + fy * 24);
-    drawPixelLine(gf, camX + fx * 12, camY + fy * 12, tipX, tipY, 0xf2e27a, 0.75, 1, 2);
+    const tipX = Math.round(camX + fx * 30);
+    const tipY = Math.round(camY + fy * 30);
+    drawPixelLine(gf, camX + fx * 16, camY + fy * 16, tipX, tipY, 0xf2e27a, 0.75, 1, 2);
     const wing1X = Math.round(tipX - fx * 4 - fy * 3);
     const wing1Y = Math.round(tipY - fy * 4 + fx * 3);
     const wing2X = Math.round(tipX - fx * 4 + fy * 3);
@@ -403,7 +403,7 @@ export class SurvivorRenderer {
       }
     }
 
-    // ── 5. 지휘관 · 부대원 · 블라이트 무리 2프레임 픽셀 스프라이트
+    // ── 5. 지휘관 · 부대원 · 블라이트 무리 2프레임 32x32 픽셀 스프라이트
     const cmdMoving = c.idleSec === 0;
     const cmdFrame = cmdMoving ? animTick % 2 : Math.floor(this.timeSec * 3) % 2;
     const cmdBob = cmdMoving && animTick % 2 === 1 ? 1 : 0;
@@ -424,12 +424,12 @@ export class SurvivorRenderer {
       const imx = Math.round(mx);
       const imy = Math.round(my);
       // 부대원 발밑 그림자 & 성휘 보호막 링 / 철갑 포진 버프 마크
-      gf.rect(imx - 4, imy + 2, 8, 2).fill({ color: 0x04060a, alpha: 0.45 });
+      gf.rect(imx - 7, imy + 2, 14, 3).fill({ color: 0x04060a, alpha: 0.45 });
       if (m.shield > 0) {
-        drawPixelCircle(gf, imx, imy - 2, 6, 0x5fd8f0, 0.25, 1, 3);
+        drawPixelCircle(gf, imx, imy - 6, 11, 0x5fd8f0, 0.25, 1, 3);
       }
       if (engine.isEntrenched && (animTick + m.id) % 2 === 0) {
-        gf.rect(imx + 5, imy - 8, 1, 2).fill({ color: accentCol, alpha: 0.85 });
+        gf.rect(imx + 9, imy - 16, 1, 3).fill({ color: accentCol, alpha: 0.85 });
       }
       const mFrame = m.attackFlashSec > 0 ? 1 : (animTick + m.id) % 2;
       const mBob = m.attackFlashSec > 0 ? 0 : (animTick + m.id) % 2;
@@ -451,16 +451,16 @@ export class SurvivorRenderer {
       const ey = lerp(e.py, e.y);
       const iex = Math.round(ex);
       const iey = Math.round(ey);
-      const sw = Math.round(7 * e.scale);
-      gf.rect(iex - Math.floor(sw / 2), iey + 2, sw, 2).fill({ color: 0x04060a, alpha: 0.5 });
+      const sw = Math.round(12 * e.scale);
+      gf.rect(iex - Math.floor(sw / 2), iey + 2, sw, 3).fill({ color: 0x04060a, alpha: 0.5 });
 
       if (e.isBoss) {
         // 최종 보스 [블라이트 모체] 발밑 위협 오라 링
-        drawPixelCircle(gf, iex, iey - 2, 22, 0xff3858, 0.65, 2, 2);
-        drawPixelCircle(gf, iex, iey - 2, 18, 0xffd040, 0.45, 1, 2);
+        drawPixelCircle(gf, iex, iey - 4, 28, 0xff3858, 0.65, 2, 2);
+        drawPixelCircle(gf, iex, iey - 4, 22, 0xffd040, 0.45, 1, 2);
       } else if (e.isElite) {
         // 엘리트 개체 발밑 황금 픽셀 마커
-        drawPixelCircle(gf, iex, iey, Math.round(7 * e.scale), 0xffc840, 0.6, 1, 2);
+        drawPixelCircle(gf, iex, iey, Math.round(11 * e.scale), 0xffc840, 0.6, 1, 2);
       }
 
       const eFrame = (animTick + e.id) % 2;
@@ -567,8 +567,8 @@ export class SurvivorRenderer {
 
     bar(
       camX,
-      camY - 14,
-      16,
+      camY - 26,
+      20,
       c.hp / c.maxHp,
       0x5ee37a,
       c.maxShield > 0 ? c.shield / c.maxShield : 0
@@ -577,8 +577,8 @@ export class SurvivorRenderer {
       if (m.hp < m.maxHp || (m.maxShield > 0 && m.shield < m.maxShield)) {
         bar(
           lerp(m.px, m.x),
-          lerp(m.py, m.y) - 12,
-          12,
+          lerp(m.py, m.y) - 24,
+          16,
           m.hp / m.maxHp,
           0x9be37a,
           m.maxShield > 0 ? m.shield / m.maxShield : 0
@@ -587,9 +587,9 @@ export class SurvivorRenderer {
     }
     for (const e of engine.enemies) {
       if (e.isBoss) {
-        bar(lerp(e.px, e.x), lerp(e.py, e.y) - 10 * e.scale - 6, 26, e.hp / e.maxHp, 0xff3858);
+        bar(lerp(e.px, e.x), lerp(e.py, e.y) - 22 * e.scale - 6, 34, e.hp / e.maxHp, 0xff3858);
       } else if (e.isElite) {
-        bar(lerp(e.px, e.x), lerp(e.py, e.y) - 8 * e.scale - 4, 14, e.hp / e.maxHp, 0xf05a5a);
+        bar(lerp(e.px, e.x), lerp(e.py, e.y) - 20 * e.scale - 4, 18, e.hp / e.maxHp, 0xf05a5a);
       }
     }
   }
