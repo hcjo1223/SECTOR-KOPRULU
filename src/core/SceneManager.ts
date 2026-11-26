@@ -1,4 +1,5 @@
 import { Container, Graphics, Sprite, type FederatedPointerEvent } from 'pixi.js';
+import type { BattleSnapshot } from '../domain/combat/BattleEngine';
 import {
   canPlaceInCell,
   getGridDimensions,
@@ -8,7 +9,14 @@ import {
   TILE_SIZE,
 } from '../domain/grid/GridSystem';
 import { getUnitDefinition } from '../domain/UnitCatalog';
-import type { GridCoord, GridSize, PlacedUnit, Race } from '../domain/types';
+import type {
+  BattleEffectState,
+  GridCoord,
+  GridSize,
+  PlacedUnit,
+  Race,
+} from '../domain/types';
+import { ProjectilePool } from '../entities/Projectile';
 import { UnitEntity } from '../entities/Unit';
 import { useGameStore } from '../store/useGameStore';
 import { AssetLoader } from './AssetLoader';
@@ -38,7 +46,10 @@ export class SceneManager {
   private readonly gridGraphics: Graphics;
   private readonly highlightGraphics: Graphics;
   private readonly unitsLayer: Container;
+  private readonly projectilesLayer: Container;
+  private readonly effectsGraphics: Graphics;
   private readonly dragGhostLayer: Container;
+  private readonly projectilePool: ProjectilePool;
 
   private readonly unitEntities = new Map<string, UnitEntity>();
   private currentGridSize: GridSize = 3;
@@ -59,7 +70,11 @@ export class SceneManager {
     this.highlightGraphics = new Graphics();
     this.unitsLayer = new Container();
     this.unitsLayer.sortableChildren = true;
+    this.projectilesLayer = new Container();
+    this.effectsGraphics = new Graphics();
     this.dragGhostLayer = new Container();
+
+    this.projectilePool = new ProjectilePool(this.projectilesLayer, 48);
 
     this.gridBgLayer.addChild(this.tilesContainer);
     this.gridBgLayer.addChild(this.gridGraphics);
@@ -67,6 +82,8 @@ export class SceneManager {
 
     this.worldContainer.addChild(this.gridBgLayer);
     this.worldContainer.addChild(this.unitsLayer);
+    this.worldContainer.addChild(this.projectilesLayer);
+    this.worldContainer.addChild(this.effectsGraphics);
     this.worldContainer.addChild(this.dragGhostLayer);
 
     this.root.addChild(this.worldContainer);
@@ -86,6 +103,15 @@ export class SceneManager {
       this.updateCameraFit();
     }
 
+    if (state.phase === 'BATTLE' && state.battleSnapshot) {
+      this.syncBattleSnapshot(state.battleSnapshot);
+      this.clearDragGhost();
+      this.highlightGraphics.clear();
+      return;
+    }
+
+    this.projectilePool.clearAll();
+    this.effectsGraphics.clear();
     this.syncUnits(state.placedUnits, state.selectedInstanceId);
 
     const rosterDrag =
@@ -110,13 +136,16 @@ export class SceneManager {
   }
 
   public update(deltaMs: number): void {
-    const factor = Math.min(1, (deltaMs / 16.67) * 0.3);
+    const factor = Math.min(1, (deltaMs / 16.67) * 0.35);
     for (const entity of this.unitEntities.values()) {
       entity.update(factor);
     }
   }
 
   public handleExternalPointerMove(stageX: number, stageY: number): void {
+    if (useGameStore.getState().phase !== 'PREP') {
+      return;
+    }
     const worldPt = this.stageToWorld(stageX, stageY);
     this.hoverCell = logicalToGrid(worldPt.x, worldPt.y, this.currentGridSize);
     if (this.dragGhostSprite) {
@@ -131,6 +160,9 @@ export class SceneManager {
     stageX: number,
     stageY: number
   ): boolean {
+    if (useGameStore.getState().phase !== 'PREP') {
+      return false;
+    }
     const worldPt = this.stageToWorld(stageX, stageY);
     const cell = logicalToGrid(worldPt.x, worldPt.y, this.currentGridSize);
     this.hoverCell = null;
@@ -142,6 +174,109 @@ export class SceneManager {
       return false;
     }
     return useGameStore.getState().placeFromRosterAt(unitId, cell.col, cell.row);
+  }
+
+  private syncBattleSnapshot(snapshot: BattleSnapshot): void {
+    const activeIds = new Set<string>();
+
+    for (let i = 0; i < snapshot.units.length; i++) {
+      const bu = snapshot.units[i];
+      activeIds.add(bu.instanceId);
+
+      let entity = this.unitEntities.get(bu.instanceId);
+      if (!entity) {
+        const def = getUnitDefinition(bu.unitId);
+        if (!def) {
+          continue;
+        }
+        entity = new UnitEntity(
+          bu.instanceId,
+          def,
+          bu.faction,
+          bu.logicalX,
+          bu.logicalY
+        );
+        this.bindUnitEvents(entity);
+        this.unitEntities.set(bu.instanceId, entity);
+        this.unitsLayer.addChild(entity.container);
+      }
+
+      entity.setTargetPosition(bu.logicalX, bu.logicalY);
+      entity.setFacing(bu.facing);
+      entity.setAction(bu.action);
+      entity.setVitals(bu.hp, bu.shield, bu.maxHp, bu.maxShield);
+      entity.setSelected(false);
+    }
+
+    for (const [id, entity] of this.unitEntities.entries()) {
+      if (!activeIds.has(id)) {
+        this.unitsLayer.removeChild(entity.container);
+        entity.destroy();
+        this.unitEntities.delete(id);
+      }
+    }
+
+    this.projectilePool.syncProjectiles(snapshot.projectiles);
+    this.drawBattleEffects(snapshot.effects);
+  }
+
+  private drawBattleEffects(effects: readonly BattleEffectState[]): void {
+    const g = this.effectsGraphics;
+    g.clear();
+
+    for (let i = 0; i < effects.length; i++) {
+      const fx = effects[i];
+      const progress = 1 - Math.max(0, fx.ttlSec / Math.max(0.01, fx.maxTtlSec));
+      const alpha = Math.max(0.1, 1 - progress * 0.85);
+      const x = Math.round(fx.x);
+      const y = Math.round(fx.y);
+
+      if (
+        fx.type === 'SPINE_LINE' &&
+        fx.endX !== undefined &&
+        fx.endY !== undefined
+      ) {
+        const steps = 6;
+        for (let s = 1; s <= steps; s++) {
+          const t = s / steps;
+          const sx = Math.round(x + (fx.endX - x) * t);
+          const sy = Math.round(y + (fx.endY - y) * t);
+          g.poly([sx - 2, sy + 2, sx, sy - 6, sx + 2, sy + 2]);
+          g.fill({ color: 0xf5f5f4, alpha });
+        }
+      } else if (fx.type === 'PSI_STORM') {
+        const r = Math.round(fx.radiusPx * (0.7 + progress * 0.3));
+        g.circle(x, y, r);
+        g.fill({ color: 0x38bdf8, alpha: alpha * 0.25 });
+        g.stroke({ width: 1.5, color: 0xe0f2fe, alpha });
+        // Lightning cross bolts
+        g.moveTo(x - r * 0.6, y - r * 0.5);
+        g.lineTo(x + r * 0.6, y + r * 0.5);
+        g.moveTo(x + r * 0.5, y - r * 0.6);
+        g.lineTo(x - r * 0.5, y + r * 0.6);
+        g.stroke({ width: 1.5, color: 0xffffff, alpha });
+      } else if (fx.type === 'NUCLEAR') {
+        const r = Math.round(fx.radiusPx * (0.4 + progress * 0.65));
+        g.circle(x, y, r);
+        g.fill({ color: 0xf97316, alpha: alpha * 0.45 });
+        g.circle(x, y, Math.round(r * 0.6));
+        g.fill({ color: 0xfef08a, alpha: alpha * 0.75 });
+        g.stroke({ width: 2, color: 0xef4444, alpha });
+      } else if (fx.type === 'HEAL' || fx.type === 'STIMPACK') {
+        const r = Math.round(fx.radiusPx * (0.6 + progress * 0.4));
+        g.circle(x, y, r);
+        g.stroke({ width: 1.5, color: fx.color, alpha });
+      } else if (fx.type === 'CLEAVE') {
+        const r = Math.round(fx.radiusPx * (0.5 + progress * 0.5));
+        g.circle(x, y, r);
+        g.stroke({ width: 2, color: 0xffffff, alpha });
+      } else {
+        const r = Math.round(fx.radiusPx * (0.45 + progress * 0.55));
+        g.circle(x, y, r);
+        g.fill({ color: fx.color, alpha: alpha * 0.4 });
+        g.stroke({ width: 1.5, color: fx.color, alpha });
+      }
+    }
   }
 
   private updateCameraFit(): void {
@@ -184,7 +319,6 @@ export class SceneManager {
       oldTiles[i].destroy();
     }
 
-    // Outer chassis frame
     g.rect(-4, -4, totalWidth + 8, totalHeight + 8);
     g.stroke({ width: 2, color: 0x1e293b });
 
@@ -207,7 +341,6 @@ export class SceneManager {
       }
     }
 
-    // Tactical Zone boundary outlines
     const allyBorderColor =
       this.currentRace === 'ZERG'
         ? 0xa855f7
@@ -228,7 +361,7 @@ export class SceneManager {
     const h = this.highlightGraphics;
     h.clear();
 
-    if (!this.hoverCell) {
+    if (!this.hoverCell || useGameStore.getState().phase !== 'PREP') {
       return;
     }
 
@@ -264,13 +397,13 @@ export class SceneManager {
       const placed = placedUnits[i];
       activeIds.add(placed.instanceId);
       const center = gridToLogicalCenter(placed.col, placed.row);
+      const def = getUnitDefinition(placed.unitId);
+      if (!def) {
+        continue;
+      }
 
       let entity = this.unitEntities.get(placed.instanceId);
       if (!entity) {
-        const def = getUnitDefinition(placed.unitId);
-        if (!def) {
-          continue;
-        }
         entity = new UnitEntity(
           placed.instanceId,
           def,
@@ -282,14 +415,9 @@ export class SceneManager {
         this.unitEntities.set(placed.instanceId, entity);
         this.unitsLayer.addChild(entity.container);
       } else if (entity.unitId !== placed.unitId) {
-        // Unit replaced in cell -> recreate sprite entity cleanly
         this.unitsLayer.removeChild(entity.container);
         entity.destroy();
 
-        const def = getUnitDefinition(placed.unitId);
-        if (!def) {
-          continue;
-        }
         entity = new UnitEntity(
           placed.instanceId,
           def,
@@ -303,7 +431,14 @@ export class SceneManager {
       }
 
       entity.setTargetPosition(center.x, center.y);
-      entity.setVitals(placed.currentHp, placed.currentShield);
+      entity.setFacing(placed.faction === 'ALLY' ? 1 : -1);
+      entity.setAction('IDLE');
+      entity.setVitals(
+        placed.currentHp,
+        placed.currentShield,
+        def.base_stats.hp,
+        def.base_stats.shield
+      );
       entity.setSelected(placed.instanceId === selectedInstanceId);
     }
 
@@ -318,6 +453,9 @@ export class SceneManager {
 
   private bindUnitEvents(entity: UnitEntity): void {
     entity.container.on('pointerdown', (ev: FederatedPointerEvent) => {
+      if (useGameStore.getState().phase !== 'PREP') {
+        return;
+      }
       if (ev.button === 2) {
         if (entity.faction === 'ALLY') {
           useGameStore.getState().removePlacedUnit(entity.instanceId);
@@ -345,7 +483,7 @@ export class SceneManager {
 
   private bindStageEvents(): void {
     this.root.on('pointerdown', (ev: FederatedPointerEvent) => {
-      if (ev.button === 2) {
+      if (ev.button === 2 || useGameStore.getState().phase !== 'PREP') {
         return;
       }
       const worldPt = this.stageToWorld(ev.global.x, ev.global.y);
@@ -363,6 +501,9 @@ export class SceneManager {
     });
 
     this.root.on('pointermove', (ev: FederatedPointerEvent) => {
+      if (useGameStore.getState().phase !== 'PREP') {
+        return;
+      }
       const worldPt = this.stageToWorld(ev.global.x, ev.global.y);
       this.hoverCell = logicalToGrid(worldPt.x, worldPt.y, this.currentGridSize);
 
@@ -410,7 +551,7 @@ export class SceneManager {
     entity?.setDragging(false);
     this.clearDragGhost();
 
-    if (drag.moved) {
+    if (drag.moved && useGameStore.getState().phase === 'PREP') {
       const worldPt = this.stageToWorld(stageX, stageY);
       const cell = logicalToGrid(worldPt.x, worldPt.y, this.currentGridSize);
       if (cell) {
@@ -418,7 +559,6 @@ export class SceneManager {
           .getState()
           .moveOrSwapGridUnit(drag.instanceId, cell.col, cell.row);
       } else if (stageY > SAFE_BOTTOM) {
-        // Dragged down into roster dock -> recall unit
         useGameStore.getState().removePlacedUnit(drag.instanceId);
       }
     }

@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 import {
+  BattleEngine,
+  type BattleSnapshot,
+} from '../domain/combat/BattleEngine';
+import {
   CENTER_GAP_COLS,
   findFirstEmptyAllyCell,
   getMaxCapacity,
@@ -15,11 +19,13 @@ import {
   getUnitsByRace,
 } from '../domain/UnitCatalog';
 import type {
+  CommanderSkillId,
   GamePhase,
   GameSpeed,
   GridSize,
   PlacedUnit,
   Race,
+  StageMode,
   SynergySummary,
 } from '../domain/types';
 
@@ -35,6 +41,7 @@ interface GameStoreState {
   phase: GamePhase;
   selectedRace: Race;
   gridSize: GridSize;
+  stageMode: StageMode;
   speed: GameSpeed;
   placedUnits: PlacedUnit[];
   selectedInstanceId: string | null;
@@ -42,10 +49,12 @@ interface GameStoreState {
   dragPayload: DragPayload | null;
   statusBanner: string | null;
   synergySummary: SynergySummary;
+  battleSnapshot: BattleSnapshot | null;
 
   startGame: (race: Race) => void;
   returnToTitle: () => void;
   setGridSize: (size: GridSize) => void;
+  setStageMode: (mode: StageMode) => void;
   setSpeed: (speed: GameSpeed) => void;
   selectPlacedUnit: (instanceId: string | null) => void;
   selectRosterUnit: (unitId: string | null) => void;
@@ -57,6 +66,11 @@ interface GameStoreState {
   populateSampleFormation: () => void;
   clearAllyUnits: () => void;
   setStatusBanner: (msg: string | null) => void;
+
+  startBattle: () => void;
+  stepBattleTicks: (ticks: number) => void;
+  triggerCommanderSkill: () => boolean;
+  returnToPrep: () => void;
 }
 
 let nextInstanceSeq = 1;
@@ -65,6 +79,8 @@ function createInstanceId(prefix: string): string {
   nextInstanceSeq += 1;
   return id;
 }
+
+const battleEngine = new BattleEngine();
 
 function buildEnemyPreviewUnits(gridSize: GridSize, playerRace: Race): PlacedUnit[] {
   const enemyRace: Race =
@@ -95,7 +111,6 @@ function buildEnemyPreviewUnits(gridSize: GridSize, playerRace: Race): PlacedUni
     });
   };
 
-  // Front column (closest to center)
   addEnemy(frontline.unit_id, 0, 0);
   addEnemy(frontline.unit_id, 0, Math.min(2, gridSize - 1));
   if (gridSize >= 4) {
@@ -106,7 +121,6 @@ function buildEnemyPreviewUnits(gridSize: GridSize, playerRace: Race): PlacedUni
     addEnemy(frontline.unit_id, 0, 4);
   }
 
-  // Mid/back columns
   addEnemy(ranged.unit_id, Math.min(1, gridSize - 1), 1);
   if (gridSize >= 4) {
     addEnemy(siege.unit_id, 2, 1);
@@ -139,12 +153,40 @@ function createInitialPlacement(race: Race, gridSize: GridSize): PlacedUnit[] {
   return [...allies, ...buildEnemyPreviewUnits(gridSize, race)];
 }
 
+export function getCommanderSkillForRace(race: Race): {
+  id: CommanderSkillId;
+  name: string;
+  desc: string;
+} {
+  switch (race) {
+    case 'TERRAN':
+      return {
+        id: 'NUCLEAR_SCAN',
+        name: '전술 핵 타격',
+        desc: '적 밀집 구역에 전술 핵을 투하해 광역 110 피해를 입힙니다.',
+      };
+    case 'ZERG':
+      return {
+        id: 'DARK_SWARM',
+        name: '다크 스웜',
+        desc: '모든 아군 체력 35% 회복 및 공격 속도 +45% 가속.',
+      };
+    case 'PROTOSS':
+      return {
+        id: 'PSIONIC_STORM',
+        name: '사이오닉 폭풍',
+        desc: '적 밀집 구역 85 피해 및 모든 아군 플라즈마 실드 +40 충전.',
+      };
+  }
+}
+
 const initialUnits = createInitialPlacement('TERRAN', 3);
 
 export const useGameStore = create<GameStoreState>((set, get) => ({
   phase: 'TITLE',
   selectedRace: 'TERRAN',
   gridSize: 3,
+  stageMode: 'ANNIHILATION',
   speed: 1,
   placedUnits: initialUnits,
   selectedInstanceId: initialUnits[0]?.instanceId ?? null,
@@ -152,6 +194,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   dragPayload: null,
   statusBanner: null,
   synergySummary: calculateSynergies(initialUnits),
+  battleSnapshot: null,
 
   startGame: (race) => {
     const gridSize: GridSize = 3;
@@ -160,12 +203,14 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       phase: 'PREP',
       selectedRace: race,
       gridSize,
+      stageMode: 'ANNIHILATION',
       placedUnits,
       selectedInstanceId: placedUnits[0]?.instanceId ?? null,
       selectedRosterUnitId: null,
       dragPayload: null,
       statusBanner: `${race} 전술 지휘소 초기화 완료 (3x3 그리드)`,
       synergySummary: calculateSynergies(placedUnits),
+      battleSnapshot: null,
     });
   },
 
@@ -174,6 +219,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       phase: 'TITLE',
       dragPayload: null,
       statusBanner: null,
+      battleSnapshot: null,
     });
   },
 
@@ -203,6 +249,19 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     });
   },
 
+  setStageMode: (mode) => {
+    const modeLabel =
+      mode === 'ANNIHILATION'
+        ? '적 몰살 (Annihilation)'
+        : mode === 'DEFENSE'
+          ? '거점 버티기 (Defense · 30초)'
+          : '적진 돌파 (Breakthrough · 목표물 타격)';
+    set({
+      stageMode: mode,
+      statusBanner: `전투 규칙 변경: ${modeLabel}`,
+    });
+  },
+
   setSpeed: (speed) => {
     set({ speed });
   },
@@ -227,11 +286,13 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   placeFromRosterAt: (unitId, col, row) => {
     const state = get();
+    if (state.phase !== 'PREP') {
+      return false;
+    }
     const occupant = state.placedUnits.find(
       (u) => u.faction === 'ALLY' && u.col === col && u.row === row
     );
 
-    // If dropping onto an existing ally cell, replace/swap gracefully? Let's place if empty, or show capacity/occupied feedback
     let workingUnits = state.placedUnits;
     if (occupant) {
       const def = getUnitDefinition(unitId);
@@ -303,6 +364,9 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   moveOrSwapGridUnit: (instanceId, col, row) => {
     const state = get();
+    if (state.phase !== 'PREP') {
+      return false;
+    }
     const result = moveOrSwapUnitOnGrid(
       state.placedUnits,
       instanceId,
@@ -327,6 +391,9 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   removePlacedUnit: (instanceId) => {
     const state = get();
+    if (state.phase !== 'PREP') {
+      return;
+    }
     const target = state.placedUnits.find((u) => u.instanceId === instanceId);
     if (!target || target.faction !== 'ALLY') {
       return;
@@ -351,7 +418,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
     for (let row = 0; row < size; row++) {
       for (let col = 0; col < size; col++) {
-        // Leave a couple of tactical gaps in 4x4/5x5 or fill balanced front/back
         const isFront = col === size - 1;
         const isBack = col === 0;
         let def = pool[0];
@@ -416,5 +482,134 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   setStatusBanner: (msg) => {
     set({ statusBanner: msg });
+  },
+
+  startBattle: () => {
+    const state = get();
+    const allyCount = state.placedUnits.filter((u) => u.faction === 'ALLY').length;
+    if (allyCount === 0) {
+      set({ statusBanner: '전투를 시작하려면 최소 1기의 아군 유닛을 배치하세요!' });
+      return;
+    }
+
+    const combatUnits = [...state.placedUnits];
+    const midRow = Math.floor(state.gridSize / 2);
+
+    if (state.stageMode === 'DEFENSE') {
+      const hasAllyObj = combatUnits.some(
+        (u) => u.faction === 'ALLY' && u.col === 0 && u.row === midRow
+      );
+      if (!hasAllyObj) {
+        const workerId = getStartingWorkerId(state.selectedRace);
+        const def = getUnitDefinition(workerId);
+        if (def) {
+          combatUnits.push({
+            instanceId: createInstanceId('ally_hq'),
+            unitId: workerId,
+            faction: 'ALLY',
+            col: 0,
+            row: midRow,
+            currentHp: def.base_stats.hp * 4,
+            currentShield: def.base_stats.shield * 3,
+            isObjectiveStructure: true,
+            structureName:
+              state.selectedRace === 'TERRAN'
+                ? '사령부 (Command Center)'
+                : state.selectedRace === 'ZERG'
+                  ? '부화장 (Hatchery)'
+                  : '연결체 (Nexus)',
+          });
+        }
+      } else {
+        combatUnits.forEach((u, idx) => {
+          if (u.faction === 'ALLY' && u.col === 0 && u.row === midRow) {
+            combatUnits[idx] = {
+              ...u,
+              isObjectiveStructure: true,
+              structureName: '핵심 방어 거점',
+            };
+          }
+        });
+      }
+    } else if (state.stageMode === 'BREAKTHROUGH') {
+      const backEnemyCol = state.gridSize + CENTER_GAP_COLS + state.gridSize - 1;
+      const existingEnemyBack = combatUnits.findIndex(
+        (u) => u.faction === 'ENEMY' && u.col === backEnemyCol && u.row === midRow
+      );
+      if (existingEnemyBack >= 0) {
+        combatUnits[existingEnemyBack] = {
+          ...combatUnits[existingEnemyBack],
+          isObjectiveStructure: true,
+          structureName: '적 핵심 목표물 (사이오닉 분열기)',
+        };
+      } else {
+        combatUnits.push({
+          instanceId: createInstanceId('enemy_obj'),
+          unitId: 'terran_siege_tank',
+          faction: 'ENEMY',
+          col: backEnemyCol,
+          row: midRow,
+          currentHp: 280,
+          currentShield: 100,
+          isObjectiveStructure: true,
+          structureName: '적 핵심 목표물 (사이오닉 분열기)',
+        });
+      }
+    }
+
+    const timeLimitSec =
+      state.stageMode === 'DEFENSE'
+        ? 30
+        : state.stageMode === 'BREAKTHROUGH'
+          ? 60
+          : 45;
+
+    battleEngine.init(combatUnits, state.stageMode, timeLimitSec, state.gridSize);
+
+    set({
+      phase: 'BATTLE',
+      selectedInstanceId: null,
+      selectedRosterUnitId: null,
+      dragPayload: null,
+      battleSnapshot: battleEngine.getSnapshot(),
+      statusBanner: '실시간 교전 개시!',
+    });
+  },
+
+  stepBattleTicks: (ticks) => {
+    const state = get();
+    if (state.phase !== 'BATTLE') {
+      return;
+    }
+    const snap = battleEngine.step(ticks);
+    set({ battleSnapshot: { ...snap } });
+  },
+
+  triggerCommanderSkill: () => {
+    const state = get();
+    if (state.phase !== 'BATTLE') {
+      return false;
+    }
+    const skill = getCommanderSkillForRace(state.selectedRace);
+    const ok = battleEngine.triggerCommanderSkill(skill.id);
+    if (ok) {
+      set({
+        battleSnapshot: { ...battleEngine.getSnapshot() },
+        statusBanner: `[지휘관 개입] ${skill.name} 발동!`,
+      });
+    }
+    return ok;
+  },
+
+  returnToPrep: () => {
+    const state = get();
+    set({
+      phase: 'PREP',
+      battleSnapshot: null,
+      statusBanner:
+        state.selectedRace === 'PROTOSS'
+          ? '전투 종료 — 프로토스 플라즈마 실드가 100% 자동 충전되었습니다.'
+          : '전술 정비 페이즈로 복귀했습니다.',
+    });
   },
 }));

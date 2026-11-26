@@ -3,7 +3,13 @@ import { AssetLoader } from '../core/AssetLoader';
 import type { GameApp } from '../core/GameApp';
 import { getMaxCapacity } from '../domain/grid/GridSystem';
 import { getUnitDefinition, getUnitsByRace } from '../domain/UnitCatalog';
-import type { GameSpeed, GridSize, Race, UnitDefinition } from '../domain/types';
+import type {
+  GameSpeed,
+  GridSize,
+  Race,
+  StageMode,
+  UnitDefinition,
+} from '../domain/types';
 import { useGameStore } from '../store/useGameStore';
 
 interface PrepOverlayProps {
@@ -12,11 +18,17 @@ interface PrepOverlayProps {
 
 const RACES: readonly Race[] = ['TERRAN', 'ZERG', 'PROTOSS'];
 const GRID_SIZES: readonly GridSize[] = [3, 4, 5];
+const STAGE_MODES: ReadonlyArray<{ mode: StageMode; label: string }> = [
+  { mode: 'ANNIHILATION', label: '섬멸' },
+  { mode: 'DEFENSE', label: '방어' },
+  { mode: 'BREAKTHROUGH', label: '돌파' },
+];
 const SPEEDS: readonly GameSpeed[] = [1, 2, 4];
 
 export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
   const selectedRace = useGameStore((s) => s.selectedRace);
   const gridSize = useGameStore((s) => s.gridSize);
+  const stageMode = useGameStore((s) => s.stageMode);
   const speed = useGameStore((s) => s.speed);
   const placedUnits = useGameStore((s) => s.placedUnits);
   const selectedInstanceId = useGameStore((s) => s.selectedInstanceId);
@@ -28,6 +40,7 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
   const startGame = useGameStore((s) => s.startGame);
   const returnToTitle = useGameStore((s) => s.returnToTitle);
   const setGridSize = useGameStore((s) => s.setGridSize);
+  const setStageMode = useGameStore((s) => s.setStageMode);
   const setSpeed = useGameStore((s) => s.setSpeed);
   const selectRosterUnit = useGameStore((s) => s.selectRosterUnit);
   const setDragPayload = useGameStore((s) => s.setDragPayload);
@@ -35,6 +48,7 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
   const removePlacedUnit = useGameStore((s) => s.removePlacedUnit);
   const populateSampleFormation = useGameStore((s) => s.populateSampleFormation);
   const clearAllyUnits = useGameStore((s) => s.clearAllyUnits);
+  const startBattle = useGameStore((s) => s.startBattle);
 
   const [hoveredRosterDef, setHoveredRosterDef] = useState<UnitDefinition | null>(
     null
@@ -156,28 +170,44 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
           </span>
         </div>
 
-        {/* Grid Expansion Controls (3x3 -> 4x4 -> 5x5) */}
-        <div className="flex items-center gap-1.5">
-          <span className="hidden sm:inline font-mono-tech text-[10px] text-slate-400">
-            GRID
-          </span>
-          {GRID_SIZES.map((size) => (
-            <button
-              key={size}
-              type="button"
-              onClick={() => setGridSize(size)}
-              className={`cursor-pointer rounded px-2 py-0.5 font-mono-tech text-[11px] border transition-colors ${
-                gridSize === size
-                  ? 'border-sky-400 bg-sky-500/20 text-sky-200 font-semibold'
-                  : 'border-slate-700 bg-slate-800/70 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {size}x{size}
-            </button>
-          ))}
+        {/* Grid Expansion (3x3 -> 4x4 -> 5x5) & Stage Mode (섬멸/방어/돌파) */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            {GRID_SIZES.map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => setGridSize(size)}
+                className={`cursor-pointer rounded px-2 py-0.5 font-mono-tech text-[11px] border transition-colors ${
+                  gridSize === size
+                    ? 'border-sky-400 bg-sky-500/20 text-sky-200 font-semibold'
+                    : 'border-slate-700 bg-slate-800/70 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {size}x{size}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center rounded border border-slate-700 bg-slate-900/90 p-0.5">
+            {STAGE_MODES.map((m) => (
+              <button
+                key={m.mode}
+                type="button"
+                onClick={() => setStageMode(m.mode)}
+                className={`cursor-pointer rounded px-1.5 py-0.5 font-mono-tech text-[10px] ${
+                  stageMode === m.mode
+                    ? 'bg-sky-600 text-white font-semibold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Utility & Speed Controls */}
+        {/* Utility, Speed & Battle Start */}
         <div className="flex items-center gap-1.5">
           <button
             type="button"
@@ -193,7 +223,7 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
           >
             초기화
           </button>
-          <div className="ml-1 flex items-center rounded border border-slate-700 bg-slate-900/90 p-0.5">
+          <div className="flex items-center rounded border border-slate-700 bg-slate-900/90 p-0.5">
             {SPEEDS.map((spd) => (
               <button
                 key={spd}
@@ -209,6 +239,14 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            data-testid="start-battle-btn"
+            onClick={startBattle}
+            className="cursor-pointer rounded border border-amber-400/80 bg-amber-500 px-2.5 py-0.5 font-mono-tech text-[11px] font-bold text-slate-950 shadow hover:bg-amber-400"
+          >
+            ⚔ 전투 개시
+          </button>
         </div>
       </div>
 
