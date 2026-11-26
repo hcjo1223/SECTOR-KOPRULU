@@ -31,9 +31,14 @@ export const App: React.FC = () => {
   }, []);
 
   return (
-    <main className="flex h-screen w-screen items-center justify-center bg-[#06090f] p-2 sm:p-4">
-      <div className="relative aspect-video w-full max-w-[1280px] max-h-full overflow-hidden rounded border border-slate-800 bg-[#090d14] shadow-2xl">
-        <div ref={canvasHostRef} className="h-full w-full pixelated" />
+    <main className="flex min-h-dvh w-full flex-col bg-[#06090f] lg:h-dvh lg:items-center lg:justify-center lg:overflow-hidden lg:p-4">
+      <div className="relative flex w-full flex-1 flex-col bg-[#090d14] lg:flex-none lg:aspect-video lg:max-w-[1280px] lg:max-h-full lg:overflow-hidden lg:rounded lg:border lg:border-slate-800 lg:shadow-2xl">
+        <div
+          ref={canvasHostRef}
+          className={`${
+            phase === 'TITLE' ? 'hidden lg:block' : 'order-2 aspect-video w-full shrink-0 border-y border-slate-800/80'
+          } pixelated lg:order-none lg:border-y-0 lg:absolute lg:inset-0 lg:h-full lg:w-full`}
+        />
         {phase === 'TITLE' && <TitleScreen />}
         {phase === 'PREP' && <PrepOverlay gameAppRef={gameAppRef} />}
         {phase === 'BATTLE' && <BattleHUD />}

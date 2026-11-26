@@ -56,12 +56,12 @@ export const TitleScreen: React.FC = () => {
   const setCodexOpen = useGameStore((s) => s.setCodexOpen);
 
   return (
-    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#070b12]/95 px-6 py-5">
+    <div className="relative z-20 flex flex-1 flex-col items-center justify-start overflow-y-auto bg-[#070b12]/95 px-4 py-6 pb-10 sm:px-6 lg:absolute lg:inset-0 lg:justify-center lg:py-5">
       <div className="mb-4 text-center">
-        <div className="font-mono-tech text-[11px] tracking-[0.28em] text-sky-400/90 uppercase mb-1">
-          SECTOR: KOPRULU · TACTICAL GRID AUTO-BATTLER ROGUELIKE
+        <div className="mb-1 font-mono-tech text-[10px] sm:text-[11px] tracking-[0.22em] text-sky-400/90 uppercase">
+          SECTOR: KOPRULU · TACTICAL GRID AUTO-BATTLER
         </div>
-        <h1 className="font-pixel text-3xl sm:text-4xl tracking-wider text-slate-100">
+        <h1 className="font-pixel text-2xl sm:text-4xl tracking-wider text-slate-100">
           SECTOR: KOPRULU
         </h1>
         <p className="mt-1.5 text-xs sm:text-sm text-slate-400">
@@ -72,42 +72,42 @@ export const TitleScreen: React.FC = () => {
             type="button"
             data-testid="title-codex-btn"
             onClick={() => setCodexOpen(true)}
-            className="cursor-pointer rounded border border-slate-700 bg-slate-900/90 px-3 py-1 font-mono-tech text-xs text-amber-300 hover:border-amber-500/60 hover:bg-slate-800"
+            className="cursor-pointer rounded border border-slate-700 bg-slate-900/90 px-3 py-1.5 font-mono-tech text-xs text-amber-300 hover:border-amber-500/60 hover:bg-slate-800"
           >
             📖 병영 / 전술 도감 확인
           </button>
         </div>
       </div>
 
-      <div className="grid w-full max-w-5xl grid-cols-1 gap-3.5 sm:grid-cols-3">
+      <div className="grid w-full max-w-5xl grid-cols-1 gap-3.5 lg:grid-cols-3">
         {RACE_OPTIONS.map((opt) => {
           const raceUnits = getUnitsByRace(opt.race);
           return (
             <div
               key={opt.race}
-              className={`flex flex-col justify-between rounded border p-4 transition-colors ${opt.accentClass}`}
+              className={`flex flex-col justify-between rounded border p-3.5 sm:p-4 transition-colors ${opt.accentClass}`}
             >
               <div>
                 <div className="flex items-baseline justify-between">
-                  <span className="font-pixel text-lg text-slate-100">
+                  <span className="font-pixel text-base sm:text-lg text-slate-100">
                     {opt.title}
                   </span>
                   <span className="text-xs text-slate-400">{opt.subtitle}</span>
                 </div>
 
                 {/* Handcrafted Pixel Roster Preview Strip */}
-                <div className="mt-2.5 flex items-center justify-between gap-1 rounded border border-slate-800 bg-[#05080f] px-2 py-2">
+                <div className="mt-2.5 grid grid-cols-6 gap-1 rounded border border-slate-800 bg-[#05080f] px-1.5 py-2">
                   {raceUnits.map((unit) => (
                     <div
                       key={unit.unit_id}
                       title={unit.name}
                       className="flex flex-col items-center"
                     >
-                      <div className="flex h-10 w-10 items-center justify-center">
+                      <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center">
                         <img
                           src={AssetLoader.getUnitDataUrl(unit, 1, 0)}
                           alt={unit.name}
-                          className="pixelated max-h-10 max-w-10 object-contain"
+                          className="pixelated max-h-8 max-w-8 sm:max-h-10 sm:max-w-10 object-contain"
                         />
                       </div>
                       <span className="font-mono-tech text-[8px] text-slate-400">
@@ -117,7 +117,7 @@ export const TitleScreen: React.FC = () => {
                   ))}
                 </div>
 
-                <div className="mt-2.5 rounded bg-slate-950/70 px-2.5 py-1.5 font-mono-tech text-[11px] text-slate-200 border border-slate-800">
+                <div className="mt-2.5 rounded border border-slate-800 bg-slate-950/70 px-2.5 py-1.5 font-mono-tech text-[11px] text-slate-200">
                   {opt.starter}
                 </div>
                 <div className="mt-2.5">
@@ -133,7 +133,7 @@ export const TitleScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => startGame(opt.race)}
-                className={`mt-4 w-full cursor-pointer rounded px-3 py-2 font-mono-tech text-xs tracking-wide transition-colors ${opt.buttonClass}`}
+                className={`mt-4 w-full cursor-pointer rounded px-3 py-2.5 font-mono-tech text-xs tracking-wide transition-colors ${opt.buttonClass}`}
               >
                 {opt.title} 출격 시작
               </button>

@@ -40,6 +40,7 @@ export class GameApp {
     const canvas = app.canvas;
     canvas.className = 'w-full h-full block';
     canvas.style.imageRendering = 'pixelated';
+    canvas.style.touchAction = 'none';
     canvas.addEventListener('contextmenu', this.preventContextMenu);
     container.appendChild(canvas);
 
@@ -49,7 +50,10 @@ export class GameApp {
     app.stage.hitArea = app.screen;
     app.stage.addChild(sceneManager.root);
 
+    sceneManager.setCompactMobile(this.isMobileViewport());
     sceneManager.initializeLayout();
+    window.addEventListener('resize', this.handleResize);
+
     this.unsubscribeStore = useGameStore.subscribe(() => {
       sceneManager.syncFromStore();
     });
@@ -116,6 +120,7 @@ export class GameApp {
 
   public destroy(): void {
     this.destroyed = true;
+    window.removeEventListener('resize', this.handleResize);
     this.unsubscribeStore?.();
     this.unsubscribeStore = null;
 
@@ -129,6 +134,14 @@ export class GameApp {
     }
     this.sceneManager = null;
   }
+
+  private isMobileViewport(): boolean {
+    return typeof window !== 'undefined' && window.innerWidth < 1024;
+  }
+
+  private readonly handleResize = (): void => {
+    this.sceneManager?.setCompactMobile(this.isMobileViewport());
+  };
 
   private readonly preventContextMenu = (e: MouseEvent): void => {
     e.preventDefault();

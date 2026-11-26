@@ -114,11 +114,17 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
       setDragPayload(null);
     };
 
+    const handlePointerCancel = () => {
+      setDragPayload(null);
+    };
+
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
     };
   }, [dragPayload, gameAppRef, selectRosterUnit, setDragPayload]);
 
@@ -126,7 +132,7 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
     unitId: string,
     ev: React.PointerEvent<HTMLDivElement>
   ) => {
-    if (ev.button !== 0) {
+    if (ev.button !== 0 || ev.pointerType === 'touch') {
       return;
     }
     setDragPayload({
@@ -137,15 +143,21 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
     });
   };
 
+  const handleRosterCardClick = (unitId: string) => {
+    // Allow tap-to-select on touch (and fallback click) for tap-grid placement
+    const currentSelected = useGameStore.getState().selectedRosterUnitId;
+    selectRosterUnit(currentSelected === unitId ? null : unitId);
+  };
+
   return (
-    <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-2.5 sm:p-3">
-      {/* Top HUD Bar */}
-      <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 rounded border border-slate-700/80 bg-[#0b111c]/92 px-3 py-1.5 backdrop-blur-xs">
-        <div className="flex items-center gap-1.5">
+    <div className="contents lg:pointer-events-none lg:absolute lg:inset-0 lg:z-10 lg:flex lg:flex-col lg:justify-between lg:p-3">
+      {/* Top HUD Bar (order-1 above canvas on mobile, floating top bar on desktop) */}
+      <div className="order-1 pointer-events-auto flex flex-wrap items-center justify-between gap-1 border-b border-slate-700/80 bg-[#0b111c]/95 px-2 py-1.5 lg:order-none lg:flex-nowrap lg:gap-1.5 lg:rounded lg:border lg:px-2.5 lg:py-1.5 lg:backdrop-blur-xs">
+        <div className="flex flex-wrap items-center gap-1">
           <button
             type="button"
             onClick={returnToTitle}
-            className="cursor-pointer rounded border border-slate-700 bg-slate-800/80 px-2 py-0.5 font-mono-tech text-[11px] text-slate-300 hover:border-slate-500 hover:text-white"
+            className="cursor-pointer rounded border border-slate-700 bg-slate-800/80 px-1.5 py-0.5 font-mono-tech text-[10px] text-slate-300 hover:border-slate-500 hover:text-white"
           >
             ◀ 타이틀
           </button>
@@ -163,7 +175,7 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
                     setGridSize(prevSize);
                   }
                 }}
-                className={`cursor-pointer rounded px-2 py-0.5 font-pixel text-[10px] transition-colors ${
+                className={`cursor-pointer rounded px-1.5 py-0.5 font-pixel text-[9px] transition-colors ${
                   selectedRace === race
                     ? race === 'TERRAN'
                       ? 'bg-sky-600 text-white'
@@ -178,46 +190,46 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
             ))}
           </div>
 
-          <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[11px] text-amber-300">
+          <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[10px] text-amber-300">
             ACT {act}
           </span>
-          <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[11px] text-slate-200">
-            병력 {allyCount}/{maxCapacity}
+          <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[10px] text-slate-200">
+            {allyCount}/{maxCapacity}
           </span>
           <span
             data-testid="minerals-badge"
-            className="rounded border border-sky-500/40 bg-sky-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-sky-300"
+            className="rounded border border-sky-500/40 bg-sky-950/70 px-1.5 py-0.5 font-mono-tech text-[10px] text-sky-300"
           >
-            💎 광물 {minerals}
+            💎 {minerals}
           </span>
         </div>
 
         {/* Tactical Map, Codex, Grid Size & Stage Mode */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1">
           <button
             type="button"
             data-testid="open-map-btn"
             onClick={() => setMapOpen(true)}
-            className="cursor-pointer rounded border border-sky-500/60 bg-sky-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-sky-200 hover:bg-sky-900"
+            className="cursor-pointer rounded border border-sky-500/60 bg-sky-950/70 px-1.5 py-0.5 font-mono-tech text-[10px] text-sky-200 hover:bg-sky-900"
           >
-            🗺 전술 지도
+            🗺 지도
           </button>
           <button
             type="button"
             data-testid="open-codex-btn"
             onClick={() => setCodexOpen(true)}
-            className="cursor-pointer rounded border border-slate-700 bg-slate-800/80 px-2 py-0.5 font-mono-tech text-[11px] text-slate-300 hover:bg-slate-700"
+            className="cursor-pointer rounded border border-slate-700 bg-slate-800/80 px-1.5 py-0.5 font-mono-tech text-[10px] text-slate-300 hover:bg-slate-700"
           >
             📖 도감
           </button>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             {GRID_SIZES.map((size) => (
               <button
                 key={size}
                 type="button"
                 onClick={() => setGridSize(size)}
-                className={`cursor-pointer rounded px-1.5 py-0.5 font-mono-tech text-[11px] border transition-colors ${
+                className={`cursor-pointer rounded px-1.5 py-0.5 font-mono-tech text-[10px] border transition-colors ${
                   gridSize === size
                     ? 'border-sky-400 bg-sky-500/20 text-sky-200 font-semibold'
                     : 'border-slate-700 bg-slate-800/70 text-slate-400 hover:text-slate-200'
@@ -247,13 +259,13 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
         </div>
 
         {/* Race Trait Action, Utility, Sound, Speed & Battle Start */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1">
           {selectedRace === 'TERRAN' && (
             <button
               type="button"
               data-testid="terran-addon-btn"
               onClick={activateTerranAddon}
-              className="cursor-pointer rounded border border-sky-500/70 bg-sky-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-sky-200 hover:bg-sky-900"
+              className="cursor-pointer rounded border border-sky-500/70 bg-sky-950/70 px-1.5 py-0.5 font-mono-tech text-[10px] text-sky-200 hover:bg-sky-900"
             >
               ⚙ 애드온(2💎)
             </button>
@@ -263,9 +275,9 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
               type="button"
               data-testid="zerg-evolve-btn"
               onClick={evolveZergUnits}
-              className="cursor-pointer rounded border border-fuchsia-500/70 bg-fuchsia-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-fuchsia-200 hover:bg-fuchsia-900"
+              className="cursor-pointer rounded border border-fuchsia-500/70 bg-fuchsia-950/70 px-1.5 py-0.5 font-mono-tech text-[10px] text-fuchsia-200 hover:bg-fuchsia-900"
             >
-              🧬 군단 변이
+              🧬 변이
             </button>
           )}
           {selectedRace === 'PROTOSS' && (
@@ -273,22 +285,22 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
               type="button"
               data-testid="protoss-warp-btn"
               onClick={warpInProtossUnit}
-              className="cursor-pointer rounded border border-amber-500/70 bg-amber-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-amber-200 hover:bg-amber-900"
+              className="cursor-pointer rounded border border-amber-500/70 bg-amber-950/70 px-1.5 py-0.5 font-mono-tech text-[10px] text-amber-200 hover:bg-amber-900"
             >
-              🌀 차원소환(2💎)
+              🌀 소환(2💎)
             </button>
           )}
           <button
             type="button"
             onClick={populateSampleFormation}
-            className="cursor-pointer rounded border border-emerald-700/70 bg-emerald-950/60 px-2 py-0.5 font-mono-tech text-[11px] text-emerald-300 hover:bg-emerald-900/70"
+            className="cursor-pointer rounded border border-emerald-700/70 bg-emerald-950/60 px-1.5 py-0.5 font-mono-tech text-[10px] text-emerald-300 hover:bg-emerald-900/70"
           >
             샘플 편대
           </button>
           <button
             type="button"
             onClick={clearAllyUnits}
-            className="cursor-pointer rounded border border-slate-700 bg-slate-800/70 px-2 py-0.5 font-mono-tech text-[11px] text-slate-300 hover:bg-slate-700"
+            className="cursor-pointer rounded border border-slate-700 bg-slate-800/70 px-1.5 py-0.5 font-mono-tech text-[10px] text-slate-300 hover:bg-slate-700"
           >
             초기화
           </button>
@@ -297,7 +309,7 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
             data-testid="sound-toggle-btn"
             onClick={toggleSoundMute}
             title={soundMuted ? '사운드 켜기' : '사운드 끄기'}
-            className="cursor-pointer rounded border border-slate-700 bg-slate-800/80 px-1.5 py-0.5 font-mono-tech text-[11px] text-slate-300 hover:bg-slate-700"
+            className="cursor-pointer rounded border border-slate-700 bg-slate-800/80 px-1.5 py-0.5 font-mono-tech text-[10px] text-slate-300 hover:bg-slate-700"
           >
             {soundMuted ? '🔇' : '🔊'}
           </button>
@@ -321,235 +333,246 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
             type="button"
             data-testid="start-battle-btn"
             onClick={startBattle}
-            className="cursor-pointer rounded border border-amber-400/80 bg-amber-500 px-2.5 py-0.5 font-mono-tech text-[11px] font-bold text-slate-950 shadow hover:bg-amber-400"
+            className="cursor-pointer rounded border border-amber-400/80 bg-amber-500 px-2 py-0.5 font-mono-tech text-[10px] font-bold text-slate-950 shadow hover:bg-amber-400"
           >
             ⚔ 전투 개시
           </button>
         </div>
       </div>
 
-      {/* Middle Floating Side Panels (Synergies + 3-Choose-1 Draft Shop & Inspector) */}
-      <div className="relative flex flex-1 items-start justify-between py-2">
-        {/* Left: Active Synergies, Owned Relics & 3-Choose-1 Draft Shop */}
-        <div className="pointer-events-auto flex w-[184px] flex-col gap-1.5">
-          <div className="flex flex-col gap-1">
-            {synergySummary.activeSynergies.slice(0, 4).map((syn) => (
-              <div
-                key={syn.tag}
-                title={syn.bonusText}
-                className={`rounded border px-2 py-0.5 text-[10px] backdrop-blur-xs ${
-                  syn.active
-                    ? 'border-amber-400/70 bg-amber-950/75 text-amber-200'
-                    : 'border-slate-700/70 bg-slate-900/75 text-slate-400'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2 font-mono-tech">
-                  <span className="truncate">{syn.label}</span>
-                  <span>
-                    {syn.count}/{syn.threshold}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {relics.length > 0 && (
-            <div className="rounded border border-amber-500/40 bg-slate-950/85 p-1.5">
-              <div className="font-mono-tech text-[9px] text-amber-400">
-                보유 유물 ({relics.length})
-              </div>
-              {relics.map((r) => (
-                <div
-                  key={r.id}
-                  title={r.description}
-                  className="truncate text-[10px] text-slate-200"
-                >
-                  • {r.name}
-                </div>
-              ))}
+      {/* Mobile scrollable workspace below canvas; dissolves via lg:contents on desktop */}
+      <div className="order-3 flex flex-1 flex-col gap-2.5 overflow-y-auto p-2.5 pb-6 lg:contents">
+        {/* Middle Floating Side Panels on Desktop / Stacked Cards on Mobile */}
+        <div className="relative flex flex-col gap-2 lg:flex-1 lg:flex-row lg:items-start lg:justify-between lg:py-2">
+          {/* Center Top Banner */}
+          {statusBanner && (
+            <div
+              data-testid="status-banner"
+              className="pointer-events-none truncate rounded border border-slate-700/80 bg-slate-950/85 px-3 py-1 text-center font-mono-tech text-[11px] text-sky-200 lg:absolute lg:left-1/2 lg:top-0.5 lg:-translate-x-1/2 lg:whitespace-nowrap lg:py-0.5"
+            >
+              {statusBanner}
             </div>
           )}
 
-          {/* 3-Choose-1 Draft Shop */}
-          <div className="rounded border border-slate-700/90 bg-[#0b111c]/94 p-2 backdrop-blur-xs">
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="font-mono-tech text-[10px] font-semibold text-sky-300">
-                3택 1 상점 드래프트
-              </span>
-              <button
-                type="button"
-                data-testid="reroll-shop-btn"
-                onClick={rerollDraftShop}
-                className="cursor-pointer rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[9px] text-amber-300 hover:bg-slate-700"
-              >
-                ↻ 리롤(1)
-              </button>
-            </div>
-            <div className="flex flex-col gap-1">
-              {draftOffers.map((unitId, idx) => {
-                const def = getUnitDefinition(unitId);
-                if (!def) return null;
-                return (
-                  <button
-                    key={`${unitId}_${idx}`}
-                    type="button"
-                    data-testid={`draft-offer-${idx}`}
-                    onClick={() => draftFromShop(idx)}
-                    className="flex cursor-pointer items-center justify-between rounded border border-slate-800 bg-slate-900/90 px-1.5 py-1 text-left hover:border-sky-500/60"
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <img
-                        src={AssetLoader.getUnitDataUrl(def, 1, 0)}
-                        alt={def.name}
-                        className="pixelated h-6 w-6 shrink-0 object-contain"
-                      />
-                      <span className="truncate text-[10px] text-slate-200">
-                        {def.name.split(' (')[0]}
-                      </span>
-                    </div>
-                    <span className="shrink-0 font-mono-tech text-[9px] text-sky-300">
-                      {def.cost}💎
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Center Top Banner */}
-        {statusBanner && (
-          <div
-            data-testid="status-banner"
-            className="pointer-events-none absolute left-1/2 top-0.5 -translate-x-1/2 whitespace-nowrap rounded border border-slate-700/80 bg-slate-950/85 px-3 py-0.5 font-mono-tech text-[11px] text-sky-200"
-          >
-            {statusBanner}
-          </div>
-        )}
-
-        {/* Right: Unit Inspector with Pixel Portrait */}
-        {inspectedDef && (
-          <div className="pointer-events-auto w-[198px] rounded border border-slate-700/90 bg-[#0b111c]/92 p-2.5 text-xs backdrop-blur-xs">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-slate-700/80 bg-[#05080f]">
-                <img
-                  src={AssetLoader.getUnitDataUrl(inspectedDef, 1, 0)}
-                  alt={inspectedDef.name}
-                  className="pixelated h-10 w-10 object-contain"
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-semibold text-slate-100">
-                  {inspectedDef.name.split(' (')[0]}
-                </div>
-                <div className="font-mono-tech text-[10px] text-slate-400">
-                  T{inspectedDef.tier} · {inspectedDef.visual.sprite_size}px ·{' '}
-                  {inspectedDef.base_stats.armor_type}
-                </div>
-                {selectedPlaced && selectedPlaced.faction === 'ALLY' && (
-                  <button
-                    type="button"
-                    onClick={() => removePlacedUnit(selectedPlaced.instanceId)}
-                    className="mt-1 cursor-pointer rounded border border-rose-700/80 bg-rose-950/70 px-1.5 py-0.5 font-mono-tech text-[9px] text-rose-300 hover:bg-rose-900/80"
-                  >
-                    회수
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 font-mono-tech text-[10px] text-slate-300">
-              <span>HP: {inspectedDef.base_stats.hp}</span>
-              <span>SHD: {inspectedDef.base_stats.shield}</span>
-              <span>ATK: {inspectedDef.base_stats.attack}</span>
-              <span>RNG: {inspectedDef.base_stats.range}</span>
-            </div>
-
-            <div className="mt-2 flex flex-wrap gap-1">
-              {inspectedDef.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[9px] text-slate-300"
+          {/* Left: Active Synergies, Owned Relics & 3-Choose-1 Draft Shop */}
+          <div className="pointer-events-auto flex w-full flex-col gap-1.5 lg:w-[184px]">
+            <div className="flex flex-wrap gap-1 lg:flex-col">
+              {synergySummary.activeSynergies.slice(0, 4).map((syn) => (
+                <div
+                  key={syn.tag}
+                  title={syn.bonusText}
+                  className={`rounded border px-2 py-0.5 text-[10px] backdrop-blur-xs ${
+                    syn.active
+                      ? 'border-amber-400/70 bg-amber-950/75 text-amber-200'
+                      : 'border-slate-700/70 bg-slate-900/75 text-slate-400'
+                  }`}
                 >
-                  {tag}
-                </span>
+                  <div className="flex items-center justify-between gap-2 font-mono-tech">
+                    <span className="truncate">{syn.label}</span>
+                    <span>
+                      {syn.count}/{syn.threshold}
+                    </span>
+                  </div>
+                </div>
               ))}
             </div>
 
-            <div className="mt-2 border-t border-slate-800 pt-1.5 text-[10px] text-slate-400">
-              <span className="font-semibold text-amber-300">
-                [{inspectedDef.skill.name}]
-              </span>{' '}
-              {inspectedDef.skill.description}
+            {relics.length > 0 && (
+              <div className="rounded border border-amber-500/40 bg-slate-950/85 p-1.5">
+                <div className="font-mono-tech text-[9px] text-amber-400">
+                  보유 유물 ({relics.length})
+                </div>
+                {relics.map((r) => (
+                  <div
+                    key={r.id}
+                    title={r.description}
+                    className="truncate text-[10px] text-slate-200"
+                  >
+                    • {r.name}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 3-Choose-1 Draft Shop */}
+            <div className="rounded border border-slate-700/90 bg-[#0b111c]/94 p-2 backdrop-blur-xs">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="font-mono-tech text-[10px] font-semibold text-sky-300">
+                  3택 1 상점 드래프트
+                </span>
+                <button
+                  type="button"
+                  data-testid="reroll-shop-btn"
+                  onClick={rerollDraftShop}
+                  className="cursor-pointer rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[9px] text-amber-300 hover:bg-slate-700"
+                >
+                  ↻ 리롤(1)
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-1 lg:flex lg:flex-col">
+                {draftOffers.map((unitId, idx) => {
+                  const def = getUnitDefinition(unitId);
+                  if (!def) return null;
+                  return (
+                    <button
+                      key={`${unitId}_${idx}`}
+                      type="button"
+                      data-testid={`draft-offer-${idx}`}
+                      onClick={() => draftFromShop(idx)}
+                      className="flex cursor-pointer items-center justify-between rounded border border-slate-800 bg-slate-900/90 px-1.5 py-1 text-left hover:border-sky-500/60"
+                    >
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <img
+                          src={AssetLoader.getUnitDataUrl(def, 1, 0)}
+                          alt={def.name}
+                          className="pixelated h-6 w-6 shrink-0 object-contain"
+                        />
+                        <span className="truncate text-[10px] text-slate-200">
+                          {def.name.split(' (')[0]}
+                        </span>
+                      </div>
+                      <span className="shrink-0 font-mono-tech text-[9px] text-sky-300">
+                        {def.cost}💎
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        )}
-      </div>
 
-      {/* Bottom Dock: Roster Recruitment & Drag-to-Place with Pixel Art Portraits */}
-      <div className="pointer-events-auto rounded border border-slate-700/80 bg-[#0b111c]/94 px-3 py-2 backdrop-blur-xs">
-        <div className="mb-1.5 flex items-center justify-between text-[11px] text-slate-400">
-          <span>
-            <strong className="text-slate-200">병력 배치</strong> — 픽셀 유닛 카드를 드래그하여 아군(파랑) 그리드에 놓거나 <kbd className="rounded bg-slate-800 px-1 text-[10px] text-slate-200">+배치</kbd> 클릭 · 그리드 유닛 우클릭 시 회수
-          </span>
-          <span className="font-mono-tech text-[10px] text-slate-500">
-            PIXEL SPRITE ROSTER ({selectedRace})
-          </span>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-          {rosterUnits.map((unit) => {
-            const isSelected = selectedRosterUnitId === unit.unit_id;
-            return (
-              <div
-                key={unit.unit_id}
-                data-testid={`roster-card-${unit.unit_id}`}
-                onPointerDown={(ev) => handleRosterPointerDown(unit.unit_id, ev)}
-                onMouseEnter={() => setHoveredRosterDef(unit)}
-                onMouseLeave={() => setHoveredRosterDef(null)}
-                className={`group flex cursor-grab items-center gap-2 rounded border px-2 py-1.5 transition-colors active:cursor-grabbing ${
-                  isSelected
-                    ? 'border-sky-400 bg-sky-950/60'
-                    : 'border-slate-700/80 bg-slate-900/90 hover:border-slate-500'
-                }`}
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-slate-800 bg-[#05080f]">
+          {/* Right: Unit Inspector with Pixel Portrait */}
+          {inspectedDef && (
+            <div className="pointer-events-auto w-full rounded border border-slate-700/90 bg-[#0b111c]/92 p-2.5 text-xs backdrop-blur-xs lg:w-[198px]">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-slate-700/80 bg-[#05080f]">
                   <img
-                    src={AssetLoader.getUnitDataUrl(unit, 1, 0)}
-                    alt={unit.name}
-                    className="pixelated h-9 w-9 object-contain"
+                    src={AssetLoader.getUnitDataUrl(inspectedDef, 1, 0)}
+                    alt={inspectedDef.name}
+                    className="pixelated h-10 w-10 object-contain"
                   />
                 </div>
-                <div className="flex min-w-0 flex-1 flex-col justify-between">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="truncate text-[11px] font-medium text-slate-200">
-                      {unit.name.split(' (')[0]}
-                    </span>
-                    <span className="rounded bg-slate-800 px-1 font-mono-tech text-[9px] text-amber-300">
-                      T{unit.tier}
-                    </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-semibold text-slate-100">
+                    {inspectedDef.name.split(' (')[0]}
                   </div>
-                  <div className="mt-1 flex items-center justify-between">
-                    <span className="font-mono-tech text-[9px] text-slate-500">
-                      {unit.visual.short_code}
-                    </span>
+                  <div className="font-mono-tech text-[10px] text-slate-400">
+                    T{inspectedDef.tier} · {inspectedDef.visual.sprite_size}px ·{' '}
+                    {inspectedDef.base_stats.armor_type}
+                  </div>
+                  {selectedPlaced && selectedPlaced.faction === 'ALLY' && (
                     <button
                       type="button"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={() => quickDeployFromRoster(unit.unit_id)}
-                      className="cursor-pointer rounded bg-sky-600/85 px-1.5 py-0.5 font-mono-tech text-[9px] text-white hover:bg-sky-500"
+                      onClick={() => removePlacedUnit(selectedPlaced.instanceId)}
+                      className="mt-1 cursor-pointer rounded border border-rose-700/80 bg-rose-950/70 px-1.5 py-0.5 font-mono-tech text-[9px] text-rose-300 hover:bg-rose-900/80"
                     >
-                      +배치
+                      회수
                     </button>
-                  </div>
+                  )}
                 </div>
               </div>
-            );
-          })}
+
+              <div className="mt-2 grid grid-cols-4 gap-x-2 gap-y-1 font-mono-tech text-[10px] text-slate-300 lg:grid-cols-2">
+                <span>HP: {inspectedDef.base_stats.hp}</span>
+                <span>SHD: {inspectedDef.base_stats.shield}</span>
+                <span>ATK: {inspectedDef.base_stats.attack}</span>
+                <span>RNG: {inspectedDef.base_stats.range}</span>
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-1">
+                {inspectedDef.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[9px] text-slate-300"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+
+              <div className="mt-2 border-t border-slate-800 pt-1.5 text-[10px] text-slate-400">
+                <span className="font-semibold text-amber-300">
+                  [{inspectedDef.skill.name}]
+                </span>{' '}
+                {inspectedDef.skill.description}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Dock: Roster Recruitment & Drag-to-Place with Pixel Art Portraits */}
+        <div className="pointer-events-auto rounded border border-slate-700/80 bg-[#0b111c]/94 px-3 py-2 backdrop-blur-xs">
+          <div className="mb-1.5 flex items-center justify-between text-[11px] text-slate-400">
+            <span>
+              <strong className="text-slate-200">병력 배치</strong> —{' '}
+              <span className="hidden sm:inline">
+                카드를 드래그하거나
+              </span>{' '}
+              카드 선택 후 그리드 탭 · <kbd className="rounded bg-slate-800 px-1 text-[10px] text-slate-200">+배치</kbd>
+            </span>
+            <span className="hidden sm:inline font-mono-tech text-[10px] text-slate-500">
+              PIXEL SPRITE ROSTER ({selectedRace})
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            {rosterUnits.map((unit) => {
+              const isSelected = selectedRosterUnitId === unit.unit_id;
+              return (
+                <div
+                  key={unit.unit_id}
+                  data-testid={`roster-card-${unit.unit_id}`}
+                  onPointerDown={(ev) => handleRosterPointerDown(unit.unit_id, ev)}
+                  onClick={() => handleRosterCardClick(unit.unit_id)}
+                  onMouseEnter={() => setHoveredRosterDef(unit)}
+                  onMouseLeave={() => setHoveredRosterDef(null)}
+                  className={`group flex cursor-pointer lg:cursor-grab items-center gap-2 rounded border px-2 py-1.5 transition-colors active:cursor-grabbing ${
+                    isSelected
+                      ? 'border-sky-400 bg-sky-950/60'
+                      : 'border-slate-700/80 bg-slate-900/90 hover:border-slate-500'
+                  }`}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-slate-800 bg-[#05080f]">
+                    <img
+                      src={AssetLoader.getUnitDataUrl(unit, 1, 0)}
+                      alt={unit.name}
+                      className="pixelated h-9 w-9 object-contain"
+                    />
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col justify-between">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="truncate text-[11px] font-medium text-slate-200">
+                        {unit.name.split(' (')[0]}
+                      </span>
+                      <span className="rounded bg-slate-800 px-1 font-mono-tech text-[9px] text-amber-300">
+                        T{unit.tier}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="font-mono-tech text-[9px] text-slate-500">
+                        {unit.visual.short_code}
+                      </span>
+                      <button
+                        type="button"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          quickDeployFromRoster(unit.unit_id);
+                        }}
+                        className="cursor-pointer rounded bg-sky-600/85 px-1.5 py-0.5 font-mono-tech text-[9px] text-white hover:bg-sky-500"
+                      >
+                        +배치
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* Floating drag sprite for roster drag feedback */}
+      {/* Floating drag sprite for desktop mouse drag feedback */}
       {dragPayload && dragPayload.source === 'ROSTER' && (() => {
         const dragDef = getUnitDefinition(dragPayload.unitId);
         return (

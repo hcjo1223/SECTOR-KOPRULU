@@ -18,9 +18,9 @@ export const TacticalMapModal: React.FC = () => {
   return (
     <div
       data-testid="tactical-map-modal"
-      className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-slate-950/88 p-4 backdrop-blur-xs"
+      className="pointer-events-auto fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-950/88 p-3 backdrop-blur-xs sm:items-center sm:p-4"
     >
-      <div className="flex w-full max-w-4xl flex-col rounded border border-slate-700 bg-[#0b111c] p-5 shadow-2xl">
+      <div className="my-auto flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-y-auto rounded border border-slate-700 bg-[#0b111c] p-4 sm:p-5 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div>
             <div className="font-mono-tech text-[10px] tracking-widest text-sky-400 uppercase">

@@ -24,10 +24,26 @@ import { AssetLoader } from './AssetLoader';
 export const VIRTUAL_WIDTH = 640;
 export const VIRTUAL_HEIGHT = 360;
 
-const SAFE_TOP = 64;
-const SAFE_BOTTOM = 250;
-const SAFE_LEFT = 104;
-const SAFE_RIGHT = 524;
+interface SafeBounds {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+const DESKTOP_SAFE_BOUNDS: SafeBounds = {
+  top: 64,
+  bottom: 250,
+  left: 104,
+  right: 524,
+};
+
+const MOBILE_SAFE_BOUNDS: SafeBounds = {
+  top: 38,
+  bottom: 342,
+  left: 32,
+  right: 608,
+};
 
 interface ActiveCanvasDrag {
   instanceId: string;
@@ -54,6 +70,7 @@ export class SceneManager {
   private readonly unitEntities = new Map<string, UnitEntity>();
   private currentGridSize: GridSize = 3;
   private currentRace: Race = 'TERRAN';
+  private isCompactMobile = false;
   private hoverCell: GridCoord | null = null;
   private activeCanvasDrag: ActiveCanvasDrag | null = null;
   private dragGhostSprite: Sprite | null = null;
@@ -88,6 +105,14 @@ export class SceneManager {
 
     this.root.addChild(this.worldContainer);
     this.bindStageEvents();
+  }
+
+  public setCompactMobile(compact: boolean): void {
+    if (this.isCompactMobile === compact) {
+      return;
+    }
+    this.isCompactMobile = compact;
+    this.updateCameraFit();
   }
 
   public syncFromStore(): void {
@@ -249,7 +274,6 @@ export class SceneManager {
         g.circle(x, y, r);
         g.fill({ color: 0x38bdf8, alpha: alpha * 0.25 });
         g.stroke({ width: 1.5, color: 0xe0f2fe, alpha });
-        // Lightning cross bolts
         g.moveTo(x - r * 0.6, y - r * 0.5);
         g.lineTo(x + r * 0.6, y + r * 0.5);
         g.moveTo(x + r * 0.5, y - r * 0.6);
@@ -284,18 +308,20 @@ export class SceneManager {
     const worldWidth = dims.totalCols * TILE_SIZE;
     const worldHeight = dims.rows * TILE_SIZE;
 
-    const safeWidth = SAFE_RIGHT - SAFE_LEFT;
-    const safeHeight = SAFE_BOTTOM - SAFE_TOP;
+    const bounds = this.isCompactMobile ? MOBILE_SAFE_BOUNDS : DESKTOP_SAFE_BOUNDS;
+    const safeWidth = bounds.right - bounds.left;
+    const safeHeight = bounds.bottom - bounds.top;
 
-    const rawScale = Math.min(safeWidth / worldWidth, safeHeight / worldHeight, 2);
+    const maxScale = this.isCompactMobile ? 2.25 : 2;
+    const rawScale = Math.min(safeWidth / worldWidth, safeHeight / worldHeight, maxScale);
     const quantizedScale = Math.floor(rawScale * 20) / 20;
 
     this.worldContainer.scale.set(quantizedScale);
     this.worldContainer.x = Math.round(
-      SAFE_LEFT + (safeWidth - worldWidth * quantizedScale) / 2
+      bounds.left + (safeWidth - worldWidth * quantizedScale) / 2
     );
     this.worldContainer.y = Math.round(
-      SAFE_TOP + (safeHeight - worldHeight * quantizedScale) / 2
+      bounds.top + (safeHeight - worldHeight * quantizedScale) / 2
     );
   }
 
@@ -554,11 +580,12 @@ export class SceneManager {
     if (drag.moved && useGameStore.getState().phase === 'PREP') {
       const worldPt = this.stageToWorld(stageX, stageY);
       const cell = logicalToGrid(worldPt.x, worldPt.y, this.currentGridSize);
+      const bounds = this.isCompactMobile ? MOBILE_SAFE_BOUNDS : DESKTOP_SAFE_BOUNDS;
       if (cell) {
         useGameStore
           .getState()
           .moveOrSwapGridUnit(drag.instanceId, cell.col, cell.row);
-      } else if (stageY > SAFE_BOTTOM) {
+      } else if (stageY > bounds.bottom) {
         useGameStore.getState().removePlacedUnit(drag.instanceId);
       }
     }
