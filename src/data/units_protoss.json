@@ -1,0 +1,194 @@
+[
+  {
+    "unit_id": "protoss_probe",
+    "name": "탐사정 (Probe)",
+    "race": "PROTOSS",
+    "tier": 1,
+    "cost": 1,
+    "grid_size": 1,
+    "tags": ["WORKER", "MECH", "MELEE", "PSIONIC"],
+    "base_stats": {
+      "hp": 30,
+      "shield": 30,
+      "attack": 5,
+      "attack_speed": 1.05,
+      "range": 1,
+      "move_speed": 1.7,
+      "armor_type": "LIGHT"
+    },
+    "skill": {
+      "id": "plasma_recharge",
+      "name": "플라즈마 실드",
+      "description": "전투 종료 후 보호막이 즉시 100% 재생됩니다.",
+      "trigger": "PASSIVE",
+      "effect": "SHIELD_RESTORE_POST_COMBAT"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_protoss_units.png",
+      "sprite_size": 32,
+      "pivot_offset": [0, -6],
+      "projectile_id": null,
+      "short_code": "PRB"
+    }
+  },
+  {
+    "unit_id": "protoss_zealot",
+    "name": "광전사 (Zealot)",
+    "race": "PROTOSS",
+    "tier": 1,
+    "cost": 3,
+    "grid_size": 1,
+    "tags": ["BIO", "MELEE", "PSIONIC"],
+    "base_stats": {
+      "hp": 80,
+      "shield": 60,
+      "attack": 14,
+      "attack_speed": 1.0,
+      "range": 1,
+      "move_speed": 1.9,
+      "armor_type": "LIGHT"
+    },
+    "skill": {
+      "id": "psionic_charge",
+      "name": "돌진",
+      "description": "적과의 교전 시 이동 속도가 급상승하여 빠르게 접근합니다.",
+      "trigger": "ON_COMBAT_START",
+      "effect": "CHARGE_FIRST_TARGET"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_protoss_units.png",
+      "sprite_size": 32,
+      "pivot_offset": [0, -8],
+      "projectile_id": null,
+      "short_code": "ZLT"
+    }
+  },
+  {
+    "unit_id": "protoss_dragoon",
+    "name": "용기병 (Dragoon)",
+    "race": "PROTOSS",
+    "tier": 1,
+    "cost": 4,
+    "grid_size": 1,
+    "tags": ["MECH", "RANGED", "PSIONIC"],
+    "base_stats": {
+      "hp": 90,
+      "shield": 75,
+      "attack": 18,
+      "attack_speed": 0.75,
+      "range": 5,
+      "move_speed": 1.5,
+      "armor_type": "ARMORED"
+    },
+    "skill": {
+      "id": "phase_disruptor",
+      "name": "위상 분열기",
+      "description": "중장갑 적에게 추가 피해를 입히는 에너지탄을 발사합니다.",
+      "trigger": "PASSIVE",
+      "effect": "BONUS_VS_ARMORED_25_PCT"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_protoss_units.png",
+      "sprite_size": 48,
+      "pivot_offset": [0, -10],
+      "projectile_id": "disruptor_bolt",
+      "short_code": "DRG"
+    }
+  },
+  {
+    "unit_id": "protoss_high_templar",
+    "name": "고위 기사 (High Templar)",
+    "race": "PROTOSS",
+    "tier": 3,
+    "cost": 6,
+    "grid_size": 1,
+    "tags": ["BIO", "RANGED", "PSIONIC", "SPLASH", "SUPPORT"],
+    "base_stats": {
+      "hp": 45,
+      "shield": 65,
+      "attack": 24,
+      "attack_speed": 0.6,
+      "range": 5.5,
+      "move_speed": 1.3,
+      "armor_type": "LIGHT"
+    },
+    "skill": {
+      "id": "psionic_storm",
+      "name": "사이오닉 폭풍",
+      "description": "밀집한 적 진영에 번개 폭풍을 일으켜 강력한 광역 피해를 입힙니다.",
+      "trigger": "ON_ATTACK",
+      "effect": "STORM_AOE_RADIUS_2"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_protoss_units.png",
+      "sprite_size": 32,
+      "pivot_offset": [0, -8],
+      "projectile_id": "psi_storm_bolt",
+      "short_code": "HTM"
+    }
+  },
+  {
+    "unit_id": "protoss_reaver",
+    "name": "파괴자 (Reaver)",
+    "race": "PROTOSS",
+    "tier": 2,
+    "cost": 6,
+    "grid_size": 1,
+    "tags": ["MECH", "RANGED", "SIEGE", "SPLASH"],
+    "base_stats": {
+      "hp": 110,
+      "shield": 90,
+      "attack": 55,
+      "attack_speed": 0.35,
+      "range": 6,
+      "move_speed": 0.85,
+      "armor_type": "ARMORED"
+    },
+    "skill": {
+      "id": "scarab_payload",
+      "name": "스캐럽 사출",
+      "description": "목표 지점을 추격해 폭발하는 강력한 스캐럽을 발사합니다.",
+      "trigger": "ON_ATTACK",
+      "effect": "HEAVY_SPLASH_RADIUS_2"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_protoss_units.png",
+      "sprite_size": 48,
+      "pivot_offset": [0, -10],
+      "projectile_id": "scarab_orb",
+      "short_code": "RVR"
+    }
+  },
+  {
+    "unit_id": "protoss_carrier",
+    "name": "우주모함 (Carrier)",
+    "race": "PROTOSS",
+    "tier": 4,
+    "cost": 10,
+    "grid_size": 1,
+    "tags": ["MECH", "AIR", "CARRIER", "RANGED"],
+    "base_stats": {
+      "hp": 260,
+      "shield": 180,
+      "attack": 12,
+      "attack_speed": 1.8,
+      "range": 6.5,
+      "move_speed": 1.25,
+      "armor_type": "MASSIVE"
+    },
+    "skill": {
+      "id": "deploy_interceptors",
+      "name": "요격기 편대",
+      "description": "전투 시작 시 다수의 요격기(Interceptor)를 사출해 지속 타격합니다.",
+      "trigger": "ON_COMBAT_START",
+      "effect": "SPAWN_4_INTERCEPTORS"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_protoss_units.png",
+      "sprite_size": 64,
+      "pivot_offset": [0, -16],
+      "projectile_id": "interceptor",
+      "short_code": "CRR"
+    }
+  }
+]

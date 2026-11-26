@@ -1,0 +1,194 @@
+[
+  {
+    "unit_id": "terran_scv",
+    "name": "건설로봇 (SCV)",
+    "race": "TERRAN",
+    "tier": 1,
+    "cost": 1,
+    "grid_size": 1,
+    "tags": ["WORKER", "MECH", "MELEE", "SUPPORT"],
+    "base_stats": {
+      "hp": 60,
+      "shield": 0,
+      "attack": 5,
+      "attack_speed": 1.0,
+      "range": 1,
+      "move_speed": 1.6,
+      "armor_type": "LIGHT"
+    },
+    "skill": {
+      "id": "scv_repair",
+      "name": "긴급 수리",
+      "description": "인접한 아군 메카닉 유닛의 체력을 매초 수리합니다.",
+      "trigger": "PASSIVE",
+      "effect": "REPAIR_ADJACENT_MECH_4_PER_SEC"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_terran_units.png",
+      "sprite_size": 32,
+      "pivot_offset": [0, -6],
+      "projectile_id": null,
+      "short_code": "SCV"
+    }
+  },
+  {
+    "unit_id": "terran_marine",
+    "name": "해병 (Marine)",
+    "race": "TERRAN",
+    "tier": 1,
+    "cost": 2,
+    "grid_size": 1,
+    "tags": ["BIO", "RANGED", "INFANTRY"],
+    "base_stats": {
+      "hp": 45,
+      "shield": 0,
+      "attack": 6,
+      "attack_speed": 1.2,
+      "range": 4,
+      "move_speed": 1.5,
+      "armor_type": "LIGHT"
+    },
+    "skill": {
+      "id": "stimpack",
+      "name": "스팀팩",
+      "description": "전투 시작 시 체력을 10% 소모하고 공격 속도가 40% 증가합니다.",
+      "trigger": "ON_COMBAT_START",
+      "effect": "HP_COST_10_ATK_SPD_PLUS_40_PCT"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_terran_units.png",
+      "sprite_size": 32,
+      "pivot_offset": [0, -8],
+      "projectile_id": "bullet_gauss",
+      "short_code": "MRN"
+    }
+  },
+  {
+    "unit_id": "terran_firebat",
+    "name": "화염방사병 (Firebat)",
+    "race": "TERRAN",
+    "tier": 1,
+    "cost": 3,
+    "grid_size": 1,
+    "tags": ["BIO", "MELEE", "INFANTRY", "SPLASH"],
+    "base_stats": {
+      "hp": 75,
+      "shield": 0,
+      "attack": 10,
+      "attack_speed": 0.9,
+      "range": 1.5,
+      "move_speed": 1.4,
+      "armor_type": "ARMORED"
+    },
+    "skill": {
+      "id": "flame_wave",
+      "name": "페르디션 화염",
+      "description": "전방 부채꼴 범위에 화염 방사 광역 피해를 줍니다.",
+      "trigger": "ON_ATTACK",
+      "effect": "CONE_SPLASH_100_PCT"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_terran_units.png",
+      "sprite_size": 32,
+      "pivot_offset": [0, -8],
+      "projectile_id": null,
+      "short_code": "FBT"
+    }
+  },
+  {
+    "unit_id": "terran_medic",
+    "name": "의무관 (Medic)",
+    "race": "TERRAN",
+    "tier": 2,
+    "cost": 3,
+    "grid_size": 1,
+    "tags": ["BIO", "SUPPORT", "INFANTRY"],
+    "base_stats": {
+      "hp": 60,
+      "shield": 0,
+      "attack": 0,
+      "attack_speed": 1.2,
+      "range": 3,
+      "move_speed": 1.5,
+      "armor_type": "LIGHT"
+    },
+    "skill": {
+      "id": "bio_heal",
+      "name": "생체 치료",
+      "description": "가장 체력이 낮은 아군 생체 유닛을 치료합니다.",
+      "trigger": "PASSIVE",
+      "effect": "HEAL_LOWEST_BIO_12"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_terran_units.png",
+      "sprite_size": 32,
+      "pivot_offset": [0, -8],
+      "projectile_id": null,
+      "short_code": "MED"
+    }
+  },
+  {
+    "unit_id": "terran_siege_tank",
+    "name": "공성 전차 (Siege Tank)",
+    "race": "TERRAN",
+    "tier": 2,
+    "cost": 5,
+    "grid_size": 1,
+    "tags": ["MECH", "RANGED", "SIEGE", "SPLASH"],
+    "base_stats": {
+      "hp": 140,
+      "shield": 0,
+      "attack": 32,
+      "attack_speed": 0.45,
+      "range": 7,
+      "move_speed": 1.0,
+      "armor_type": "ARMORED"
+    },
+    "skill": {
+      "id": "siege_mode",
+      "name": "공성 모드",
+      "description": "전투 시작 시 고정 배치되어 사거리 +3 및 스플래시 포격을 가합니다.",
+      "trigger": "ON_COMBAT_START",
+      "effect": "SIEGE_STANCE_RANGE_PLUS_3_SPLASH"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_terran_units.png",
+      "sprite_size": 48,
+      "pivot_offset": [0, -10],
+      "projectile_id": "shell_arclite",
+      "short_code": "TNK"
+    }
+  },
+  {
+    "unit_id": "terran_battlecruiser",
+    "name": "전투순양함 (Battlecruiser)",
+    "race": "TERRAN",
+    "tier": 4,
+    "cost": 9,
+    "grid_size": 1,
+    "tags": ["MECH", "AIR", "RANGED"],
+    "base_stats": {
+      "hp": 360,
+      "shield": 0,
+      "attack": 22,
+      "attack_speed": 1.1,
+      "range": 5,
+      "move_speed": 1.2,
+      "armor_type": "MASSIVE"
+    },
+    "skill": {
+      "id": "yamato_cannon",
+      "name": "야마토 포",
+      "description": "고에너지 플라즈마를 집중 발사해 단일 대상에 큰 피해를 입힙니다.",
+      "trigger": "ON_ATTACK",
+      "effect": "EVERY_5TH_ATK_DMG_250_PCT"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_terran_units.png",
+      "sprite_size": 64,
+      "pivot_offset": [0, -16],
+      "projectile_id": "laser_ats",
+      "short_code": "BC"
+    }
+  }
+]
