@@ -1,0 +1,58 @@
+[
+  {
+    "projectile_id": "bullet_gauss",
+    "speed": 12,
+    "splash_radius": 0,
+    "color": "#fde047",
+    "size": 3
+  },
+  {
+    "projectile_id": "shell_arclite",
+    "speed": 9,
+    "splash_radius": 1.5,
+    "color": "#fb923c",
+    "size": 5
+  },
+  {
+    "projectile_id": "laser_ats",
+    "speed": 14,
+    "splash_radius": 0,
+    "color": "#f97316",
+    "size": 4
+  },
+  {
+    "projectile_id": "needle_spine",
+    "speed": 11,
+    "splash_radius": 0,
+    "color": "#a3e635",
+    "size": 3
+  },
+  {
+    "projectile_id": "spine_lurker",
+    "speed": 10,
+    "splash_radius": 1.0,
+    "color": "#c084fc",
+    "size": 4
+  },
+  {
+    "projectile_id": "disruptor_bolt",
+    "speed": 10,
+    "splash_radius": 0,
+    "color": "#38bdf8",
+    "size": 4
+  },
+  {
+    "projectile_id": "scarab_orb",
+    "speed": 7,
+    "splash_radius": 2.0,
+    "color": "#facc15",
+    "size": 6
+  },
+  {
+    "projectile_id": "interceptor",
+    "speed": 13,
+    "splash_radius": 0,
+    "color": "#60a5fa",
+    "size": 4
+  }
+]
