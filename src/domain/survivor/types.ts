@@ -155,6 +155,12 @@ export interface Actor {
   /** 마지막 피격 이후 경과 시간 (보호막 재생·피격 연출용) */
   sinceHitSec: number;
   facingX: number;
+  /** 8방향 스프라이트 회전용 조준·이동 각도 (라디안, +π/2 = 정면 S) */
+  facingAngle: number;
+  /** 현재 틱 이동 여부 (IDLE vs WALK 애니메이션 판정) */
+  moving: boolean;
+  /** 공격 모션(ATTACK 총구 화염·참격 프레임) 유지 잔여 시간 */
+  attackFlashSec: number;
 }
 
 export interface CommanderState extends Actor {
@@ -169,7 +175,6 @@ export interface SquadMemberState extends Actor {
   def: SquadUnitDef;
   slotIndex: number;
   cooldown: number;
-  attackFlashSec: number;
 }
 
 export interface EnemyState {
@@ -187,10 +192,12 @@ export interface EnemyState {
   scale: number;
   contactCd: number;
   hitFlashSec: number;
+  attackFlashSec: number;
   isElite: boolean;
   isBoss: boolean;
   alive: boolean;
   facingX: number;
+  facingAngle: number;
 }
 
 export interface ProjectileState {
