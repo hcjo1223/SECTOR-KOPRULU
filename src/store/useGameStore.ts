@@ -12,6 +12,14 @@ import {
   removeUnitFromGrid,
   resizeGridUnits,
 } from '../domain/grid/GridSystem';
+import {
+  findEvolvableZergPair,
+  generateDraftOffers,
+  generateTacticalMap,
+  getActForGridSize,
+  getRelicChoicesForRace,
+  RELIC_CATALOG,
+} from '../domain/roguelike/RunGenerator';
 import { calculateSynergies } from '../domain/synergy/SynergyCalc';
 import {
   getStartingWorkerId,
@@ -25,8 +33,10 @@ import type {
   GridSize,
   PlacedUnit,
   Race,
+  RelicDefinition,
   StageMode,
   SynergySummary,
+  TacticalMapNode,
 } from '../domain/types';
 
 export interface DragPayload {
@@ -40,6 +50,10 @@ export interface DragPayload {
 interface GameStoreState {
   phase: GamePhase;
   selectedRace: Race;
+  act: 1 | 2 | 3;
+  currentStep: number;
+  minerals: number;
+  rollSeed: number;
   gridSize: GridSize;
   stageMode: StageMode;
   speed: GameSpeed;
@@ -51,16 +65,30 @@ interface GameStoreState {
   synergySummary: SynergySummary;
   battleSnapshot: BattleSnapshot | null;
 
+  mapNodes: TacticalMapNode[];
+  activeNodeId: string | null;
+  draftOffers: string[];
+  relics: RelicDefinition[];
+  isMapOpen: boolean;
+  isCodexOpen: boolean;
+
   startGame: (race: Race) => void;
   returnToTitle: () => void;
   setGridSize: (size: GridSize) => void;
   setStageMode: (mode: StageMode) => void;
   setSpeed: (speed: GameSpeed) => void;
+  setMapOpen: (open: boolean) => void;
+  setCodexOpen: (open: boolean) => void;
+  selectMapNode: (nodeId: string) => void;
+
   selectPlacedUnit: (instanceId: string | null) => void;
   selectRosterUnit: (unitId: string | null) => void;
   setDragPayload: (payload: DragPayload | null) => void;
   placeFromRosterAt: (unitId: string, col: number, row: number) => boolean;
   quickDeployFromRoster: (unitId: string) => boolean;
+  draftFromShop: (offerIndex: number) => boolean;
+  rerollDraftShop: () => boolean;
+  evolveZergUnits: () => boolean;
   moveOrSwapGridUnit: (instanceId: string, col: number, row: number) => boolean;
   removePlacedUnit: (instanceId: string) => void;
   populateSampleFormation: () => void;
@@ -70,6 +98,7 @@ interface GameStoreState {
   startBattle: () => void;
   stepBattleTicks: (ticks: number) => void;
   triggerCommanderSkill: () => boolean;
+  claimVictoryReward: (rewardUnitId?: string, rewardRelicId?: string) => void;
   returnToPrep: () => void;
 }
 
@@ -185,6 +214,10 @@ const initialUnits = createInitialPlacement('TERRAN', 3);
 export const useGameStore = create<GameStoreState>((set, get) => ({
   phase: 'TITLE',
   selectedRace: 'TERRAN',
+  act: 1,
+  currentStep: 1,
+  minerals: 12,
+  rollSeed: 1,
   gridSize: 3,
   stageMode: 'ANNIHILATION',
   speed: 1,
@@ -196,12 +229,24 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   synergySummary: calculateSynergies(initialUnits),
   battleSnapshot: null,
 
+  mapNodes: generateTacticalMap(),
+  activeNodeId: 'act1_s1_l0',
+  draftOffers: generateDraftOffers('TERRAN', 1, 1),
+  relics: [],
+  isMapOpen: false,
+  isCodexOpen: false,
+
   startGame: (race) => {
     const gridSize: GridSize = 3;
     const placedUnits = createInitialPlacement(race, gridSize);
+    const mapNodes = generateTacticalMap();
     set({
       phase: 'PREP',
       selectedRace: race,
+      act: 1,
+      currentStep: 1,
+      minerals: 12,
+      rollSeed: 1,
       gridSize,
       stageMode: 'ANNIHILATION',
       placedUnits,
@@ -211,6 +256,12 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       statusBanner: `${race} 전술 지휘소 초기화 완료 (3x3 그리드)`,
       synergySummary: calculateSynergies(placedUnits),
       battleSnapshot: null,
+      mapNodes,
+      activeNodeId: mapNodes[0].id,
+      draftOffers: generateDraftOffers(race, 1, 1),
+      relics: [],
+      isMapOpen: false,
+      isCodexOpen: false,
     });
   },
 
@@ -220,6 +271,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       dragPayload: null,
       statusBanner: null,
       battleSnapshot: null,
+      isMapOpen: false,
+      isCodexOpen: false,
     });
   },
 
@@ -234,6 +287,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       ...resized.units,
       ...buildEnemyPreviewUnits(newSize, state.selectedRace),
     ];
+    const nextAct = getActForGridSize(newSize);
 
     const removedMsg =
       resized.removedAllyUnits.length > 0
@@ -242,8 +296,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
     set({
       gridSize: newSize,
+      act: nextAct,
       placedUnits: nextUnits,
       selectedInstanceId: null,
+      draftOffers: generateDraftOffers(state.selectedRace, nextAct, state.rollSeed + 1),
       statusBanner: `전장 그리드 ${newSize}x${newSize} (최대 ${getMaxCapacity(newSize)}기) 전환${removedMsg}`,
       synergySummary: calculateSynergies(nextUnits),
     });
@@ -264,6 +320,80 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   setSpeed: (speed) => {
     set({ speed });
+  },
+
+  setMapOpen: (open) => {
+    set({ isMapOpen: open });
+  },
+
+  setCodexOpen: (open) => {
+    set({ isCodexOpen: open });
+  },
+
+  selectMapNode: (nodeId) => {
+    const state = get();
+    const node = state.mapNodes.find((n) => n.id === nodeId);
+    if (!node) {
+      return;
+    }
+
+    const updatedNodes = state.mapNodes.map((n) =>
+      n.id === nodeId ? { ...n, completed: true } : n
+    );
+
+    if (node.gridSize !== state.gridSize) {
+      state.setGridSize(node.gridSize);
+    }
+
+    if (node.type === 'SUPPLY') {
+      const choices = getRelicChoicesForRace(
+        state.selectedRace,
+        state.relics.map((r) => r.id)
+      );
+      const grantedRelic = choices[0];
+      const nextRelics = grantedRelic
+        ? [...state.relics, grantedRelic]
+        : state.relics;
+      set({
+        mapNodes: updatedNodes,
+        activeNodeId: nodeId,
+        act: node.act,
+        currentStep: Math.min(3, node.step + 1),
+        minerals: get().minerals + node.rewardMinerals,
+        relics: nextRelics,
+        isMapOpen: false,
+        statusBanner: `[보급품 확보] 광물 +${node.rewardMinerals} 및 유물 '${grantedRelic?.name ?? '보급품'}' 획득!`,
+      });
+      return;
+    }
+
+    if (node.type === 'DEPOT') {
+      const pool = getUnitsByRace(state.selectedRace);
+      const eliteDef = pool[Math.min(3, pool.length - 1)];
+      if (eliteDef) {
+        get().quickDeployFromRoster(eliteDef.unit_id);
+      }
+      set({
+        mapNodes: updatedNodes,
+        activeNodeId: nodeId,
+        act: node.act,
+        currentStep: Math.min(3, node.step + 1),
+        minerals: get().minerals + node.rewardMinerals,
+        isMapOpen: false,
+        statusBanner: `[전술 정비소] ${node.gridSize}x${node.gridSize} 그리드 확장 및 정예 '${eliteDef?.name ?? ''}' 합류!`,
+      });
+      return;
+    }
+
+    set({
+      mapNodes: updatedNodes,
+      activeNodeId: nodeId,
+      act: node.act,
+      currentStep: node.step,
+      stageMode: node.stageMode,
+      isMapOpen: false,
+      statusBanner: `[작전 구역 진입] ${node.title} — ${node.subtitle}`,
+    });
   },
 
   selectPlacedUnit: (instanceId) => {
@@ -360,6 +490,104 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       return false;
     }
     return state.placeFromRosterAt(unitId, empty.col, empty.row);
+  },
+
+  draftFromShop: (offerIndex) => {
+    const state = get();
+    const unitId = state.draftOffers[offerIndex];
+    if (!unitId) {
+      return false;
+    }
+    const def = getUnitDefinition(unitId);
+    if (!def) {
+      return false;
+    }
+    if (state.minerals < def.cost) {
+      set({
+        statusBanner: `광물이 부족합니다 (필요: ${def.cost}, 보유: ${state.minerals})`,
+      });
+      return false;
+    }
+
+    const empty = findFirstEmptyAllyCell(state.placedUnits, state.gridSize);
+    if (!empty) {
+      set({
+        statusBanner: `전장 그리드가 가득 찼습니다 (${getMaxCapacity(state.gridSize)}기 최대)`,
+      });
+      return false;
+    }
+
+    const placed = state.placeFromRosterAt(unitId, empty.col, empty.row);
+    if (!placed) {
+      return false;
+    }
+
+    const nextSeed = state.rollSeed + 1;
+    set({
+      minerals: state.minerals - def.cost,
+      rollSeed: nextSeed,
+      draftOffers: generateDraftOffers(state.selectedRace, state.act, nextSeed),
+      statusBanner: `[드래프트 모집] ${def.name} 합류 (-${def.cost} 광물)`,
+    });
+    return true;
+  },
+
+  rerollDraftShop: () => {
+    const state = get();
+    if (state.minerals < 1) {
+      set({ statusBanner: '상점 리롤에 필요한 광물(1)이 부족합니다.' });
+      return false;
+    }
+    const nextSeed = state.rollSeed + 1;
+    set({
+      minerals: state.minerals - 1,
+      rollSeed: nextSeed,
+      draftOffers: generateDraftOffers(state.selectedRace, state.act, nextSeed),
+      statusBanner: '병력 드래프트 상점을 갱신했습니다 (-1 광물)',
+    });
+    return true;
+  },
+
+  evolveZergUnits: () => {
+    const state = get();
+    if (state.selectedRace !== 'ZERG') {
+      return false;
+    }
+    const pair = findEvolvableZergPair(state.placedUnits);
+    if (!pair) {
+      set({
+        statusBanner: '변이 진화하려면 동일한 하위 저그 유닛 2기가 그리드에 있어야 합니다.',
+      });
+      return false;
+    }
+    const targetDef = getUnitDefinition(pair.targetUnitId);
+    if (!targetDef) {
+      return false;
+    }
+
+    const filtered = state.placedUnits.filter(
+      (u) =>
+        u.instanceId !== pair.secondary.instanceId &&
+        u.instanceId !== pair.primary.instanceId
+    );
+    const evolvedUnit: PlacedUnit = {
+      instanceId: pair.primary.instanceId,
+      unitId: targetDef.unit_id,
+      faction: 'ALLY',
+      col: pair.primary.col,
+      row: pair.primary.row,
+      currentHp: targetDef.base_stats.hp,
+      currentShield: targetDef.base_stats.shield,
+    };
+    const nextUnits = [...filtered, evolvedUnit];
+
+    set({
+      placedUnits: nextUnits,
+      selectedInstanceId: evolvedUnit.instanceId,
+      statusBanner: `[저그 군단 변이] 2기 융합 → '${targetDef.name}' 진화 완료!`,
+      synergySummary: calculateSynergies(nextUnits),
+    });
+    return true;
   },
 
   moveOrSwapGridUnit: (instanceId, col, row) => {
@@ -492,7 +720,25 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       return;
     }
 
-    const combatUnits = [...state.placedUnits];
+    let hpBonusPct = 0;
+    let shieldBonusFlat = 0;
+    for (let i = 0; i < state.relics.length; i++) {
+      const r = state.relics[i];
+      if (r.bonusType === 'HP_PCT') hpBonusPct += r.value;
+      if (r.bonusType === 'SHIELD_FLAT') shieldBonusFlat += r.value;
+    }
+
+    const combatUnits = state.placedUnits.map((u) => {
+      if (u.faction !== 'ALLY') {
+        return u;
+      }
+      return {
+        ...u,
+        currentHp: Math.round(u.currentHp * (1 + hpBonusPct)),
+        currentShield: u.currentShield + shieldBonusFlat,
+      };
+    });
+
     const midRow = Math.floor(state.gridSize / 2);
 
     if (state.stageMode === 'DEFENSE') {
@@ -599,6 +845,48 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       });
     }
     return ok;
+  },
+
+  claimVictoryReward: (rewardUnitId, rewardRelicId) => {
+    const state = get();
+    let nextRelics = state.relics;
+    let extraMinerals = 6 + state.act * 2;
+
+    if (rewardRelicId) {
+      const found = RELIC_CATALOG.find((r) => r.id === rewardRelicId);
+      if (found && !nextRelics.some((r) => r.id === found.id)) {
+        nextRelics = [...nextRelics, found];
+        if (found.bonusType === 'START_MINERALS') {
+          extraMinerals += found.value;
+        }
+      }
+    }
+
+    const nextStep = Math.min(3, state.currentStep + 1);
+    const nextSize: GridSize = nextStep === 1 ? 3 : nextStep === 2 ? 4 : 5;
+
+    set({
+      phase: 'PREP',
+      battleSnapshot: null,
+      minerals: state.minerals + extraMinerals,
+      currentStep: nextStep,
+      relics: nextRelics,
+    });
+
+    if (nextSize !== state.gridSize) {
+      get().setGridSize(nextSize);
+    }
+
+    if (rewardUnitId) {
+      get().quickDeployFromRoster(rewardUnitId);
+    }
+
+    const nextSeed = get().rollSeed + 1;
+    set({
+      rollSeed: nextSeed,
+      draftOffers: generateDraftOffers(state.selectedRace, get().act, nextSeed),
+      statusBanner: `[전투 승리 보상] 광물 +${extraMinerals} 획득 및 Act ${nextStep} (${nextSize}x${nextSize} 그리드) 진입!`,
+    });
   },
 
   returnToPrep: () => {
