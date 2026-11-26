@@ -218,6 +218,47 @@ export class BattleEngine {
     return false;
   }
 
+  public warpInAllyUnit(
+    instanceId: string,
+    unitId: string,
+    logicalX: number,
+    logicalY: number
+  ): boolean {
+    if (this.outcome !== 'ONGOING') {
+      return false;
+    }
+    const def = getUnitDefinition(unitId);
+    if (!def) {
+      return false;
+    }
+    const maxShield = this.hasProtossSynergy
+      ? Math.round(def.base_stats.shield * 1.25)
+      : def.base_stats.shield;
+
+    this.units.push({
+      instanceId,
+      unitId,
+      faction: 'ALLY',
+      logicalX,
+      logicalY,
+      hp: def.base_stats.hp,
+      maxHp: def.base_stats.hp,
+      shield: maxShield,
+      maxShield,
+      action: 'IDLE',
+      facing: 1,
+      cooldownSec: 0,
+      attackCount: 0,
+      stimpackActive: false,
+      siegeModeActive: false,
+      chargeActive: def.skill.id === 'psionic_charge',
+      darkSwarmBuff: false,
+      isObjectiveStructure: false,
+    });
+    this.spawnEffect('PSI_STORM', logicalX, logicalY, 18, '#38bdf8', 0.45);
+    return true;
+  }
+
   public step(ticks: number = 1): BattleSnapshot {
     for (let t = 0; t < ticks; t++) {
       if (this.outcome !== 'ONGOING') {

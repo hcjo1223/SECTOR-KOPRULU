@@ -54,6 +54,10 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
   const draftFromShop = useGameStore((s) => s.draftFromShop);
   const rerollDraftShop = useGameStore((s) => s.rerollDraftShop);
   const evolveZergUnits = useGameStore((s) => s.evolveZergUnits);
+  const warpInProtossUnit = useGameStore((s) => s.warpInProtossUnit);
+  const activateTerranAddon = useGameStore((s) => s.activateTerranAddon);
+  const soundMuted = useGameStore((s) => s.soundMuted);
+  const toggleSoundMute = useGameStore((s) => s.toggleSoundMute);
   const removePlacedUnit = useGameStore((s) => s.removePlacedUnit);
   const populateSampleFormation = useGameStore((s) => s.populateSampleFormation);
   const clearAllyUnits = useGameStore((s) => s.clearAllyUnits);
@@ -242,8 +246,18 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
           </div>
         </div>
 
-        {/* Utility, Speed & Battle Start */}
+        {/* Race Trait Action, Utility, Sound, Speed & Battle Start */}
         <div className="flex items-center gap-1.5">
+          {selectedRace === 'TERRAN' && (
+            <button
+              type="button"
+              data-testid="terran-addon-btn"
+              onClick={activateTerranAddon}
+              className="cursor-pointer rounded border border-sky-500/70 bg-sky-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-sky-200 hover:bg-sky-900"
+            >
+              ⚙ 애드온(2💎)
+            </button>
+          )}
           {selectedRace === 'ZERG' && (
             <button
               type="button"
@@ -252,6 +266,16 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
               className="cursor-pointer rounded border border-fuchsia-500/70 bg-fuchsia-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-fuchsia-200 hover:bg-fuchsia-900"
             >
               🧬 군단 변이
+            </button>
+          )}
+          {selectedRace === 'PROTOSS' && (
+            <button
+              type="button"
+              data-testid="protoss-warp-btn"
+              onClick={warpInProtossUnit}
+              className="cursor-pointer rounded border border-amber-500/70 bg-amber-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-amber-200 hover:bg-amber-900"
+            >
+              🌀 차원소환(2💎)
             </button>
           )}
           <button
@@ -267,6 +291,15 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
             className="cursor-pointer rounded border border-slate-700 bg-slate-800/70 px-2 py-0.5 font-mono-tech text-[11px] text-slate-300 hover:bg-slate-700"
           >
             초기화
+          </button>
+          <button
+            type="button"
+            data-testid="sound-toggle-btn"
+            onClick={toggleSoundMute}
+            title={soundMuted ? '사운드 켜기' : '사운드 끄기'}
+            className="cursor-pointer rounded border border-slate-700 bg-slate-800/80 px-1.5 py-0.5 font-mono-tech text-[11px] text-slate-300 hover:bg-slate-700"
+          >
+            {soundMuted ? '🔇' : '🔊'}
           </button>
           <div className="flex items-center rounded border border-slate-700 bg-slate-900/90 p-0.5">
             {SPEEDS.map((spd) => (

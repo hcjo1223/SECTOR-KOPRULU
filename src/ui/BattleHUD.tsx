@@ -20,6 +20,8 @@ export const BattleHUD: React.FC = () => {
 
   const setSpeed = useGameStore((s) => s.setSpeed);
   const triggerCommanderSkill = useGameStore((s) => s.triggerCommanderSkill);
+  const warpInProtossUnit = useGameStore((s) => s.warpInProtossUnit);
+  const minerals = useGameStore((s) => s.minerals);
   const claimVictoryReward = useGameStore((s) => s.claimVictoryReward);
   const returnToPrep = useGameStore((s) => s.returnToPrep);
 
@@ -201,25 +203,42 @@ export const BattleHUD: React.FC = () => {
           <span className="text-slate-400">{commanderSkill.desc}</span>
         </div>
 
-        <button
-          type="button"
-          data-testid="commander-skill-btn"
-          disabled={
-            battleSnapshot.commanderSkillUsed ||
-            battleSnapshot.outcome !== 'ONGOING'
-          }
-          onClick={() => triggerCommanderSkill()}
-          className={`cursor-pointer rounded border px-3 py-1 font-mono-tech text-xs font-bold transition-colors ${
-            battleSnapshot.commanderSkillUsed ||
-            battleSnapshot.outcome !== 'ONGOING'
-              ? 'border-slate-700 bg-slate-800/60 text-slate-500 cursor-not-allowed'
-              : 'border-amber-400 bg-amber-500 text-slate-950 hover:bg-amber-400'
-          }`}
-        >
-          {battleSnapshot.commanderSkillUsed
-            ? '개입 완료'
-            : `⚡ ${commanderSkill.name} 발동`}
-        </button>
+        <div className="flex items-center gap-2">
+          {selectedRace === 'PROTOSS' && (
+            <button
+              type="button"
+              data-testid="battle-warp-btn"
+              disabled={minerals < 2 || battleSnapshot.outcome !== 'ONGOING'}
+              onClick={() => warpInProtossUnit()}
+              className={`cursor-pointer rounded border px-2.5 py-1 font-mono-tech text-xs font-semibold transition-colors ${
+                minerals < 2 || battleSnapshot.outcome !== 'ONGOING'
+                  ? 'border-slate-700 bg-slate-800/60 text-slate-500 cursor-not-allowed'
+                  : 'border-sky-400 bg-sky-600 text-white hover:bg-sky-500'
+              }`}
+            >
+              🌀 차원 소환 (2💎)
+            </button>
+          )}
+          <button
+            type="button"
+            data-testid="commander-skill-btn"
+            disabled={
+              battleSnapshot.commanderSkillUsed ||
+              battleSnapshot.outcome !== 'ONGOING'
+            }
+            onClick={() => triggerCommanderSkill()}
+            className={`cursor-pointer rounded border px-3 py-1 font-mono-tech text-xs font-bold transition-colors ${
+              battleSnapshot.commanderSkillUsed ||
+              battleSnapshot.outcome !== 'ONGOING'
+                ? 'border-slate-700 bg-slate-800/60 text-slate-500 cursor-not-allowed'
+                : 'border-amber-400 bg-amber-500 text-slate-950 hover:bg-amber-400'
+            }`}
+          >
+            {battleSnapshot.commanderSkillUsed
+              ? '개입 완료'
+              : `⚡ ${commanderSkill.name} 발동`}
+          </button>
+        </div>
       </div>
     </div>
   );
