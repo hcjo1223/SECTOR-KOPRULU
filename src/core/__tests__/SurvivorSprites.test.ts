@@ -90,22 +90,13 @@ describe('SurvivorSprites', () => {
       expect(atk0.data.some((v, idx) => v !== atk1.data[idx])).toBe(true);
     }
 
-    // 정면(S), 측면(E), 후면(N) 실루엣이 서로 다르고, 좌측면(W)은 우측면(E)의 정확한 좌우 대칭이어야 한다
-    const sView = renderSpritePixels('SOLDIER', ironcladPalette, 0, 'S', 'IDLE');
-    const eView = renderSpritePixels('SOLDIER', ironcladPalette, 0, 'E', 'IDLE');
-    const wView = renderSpritePixels('SOLDIER', ironcladPalette, 0, 'W', 'IDLE');
-    const nView = renderSpritePixels('SOLDIER', ironcladPalette, 0, 'N', 'IDLE');
-
-    expect(sView.data.some((v, idx) => v !== eView.data[idx])).toBe(true);
-    expect(sView.data.some((v, idx) => v !== nView.data[idx])).toBe(true);
-    for (let y = 0; y < SPRITE_SIZE; y += 1) {
-      for (let x = 0; x < SPRITE_SIZE; x += 1) {
-        const ei = (y * SPRITE_SIZE + x) * 4;
-        const wi = (y * SPRITE_SIZE + (SPRITE_SIZE - 1 - x)) * 4;
-        expect(wView.data[wi]).toBe(eView.data[ei]);
-        expect(wView.data[wi + 3]).toBe(eView.data[ei + 3]);
-      }
+    // IMG_2485.png / IMG_2486.png 기반 8방향(S, SE, E, NE, N, NW, W, SW) 각 뷰가 모두 고유한 32x32 픽셀 데이터를 가져야 한다
+    const dirHashes = new Set<string>();
+    for (const dir of ALL_DIRS_8) {
+      const view = renderSpritePixels('SOLDIER', ironcladPalette, 0, dir, 'IDLE');
+      dirHashes.add(Array.from(view.data.slice(0, 1024)).join(','));
     }
+    expect(dirHashes.size).toBe(8);
   });
 
   it('renders distinct faction commander pixel designs for IRONCLAD, HIVE, and LUMEN', () => {
