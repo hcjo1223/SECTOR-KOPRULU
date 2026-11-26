@@ -1,0 +1,79 @@
+{
+  "runLengthSec": 600,
+  "maxEnemies": 420,
+  "hpScalePerMinute": 0.12,
+  "streams": [
+    {
+      "enemyId": "mite",
+      "fromSec": 0,
+      "toSec": 9999,
+      "rateStart": 0.9,
+      "rateEnd": 7.0
+    },
+    {
+      "enemyId": "crawler",
+      "fromSec": 60,
+      "toSec": 9999,
+      "rateStart": 0.4,
+      "rateEnd": 4.0
+    },
+    {
+      "enemyId": "bloater",
+      "fromSec": 150,
+      "toSec": 9999,
+      "rateStart": 0.15,
+      "rateEnd": 1.4
+    },
+    {
+      "enemyId": "brute",
+      "fromSec": 300,
+      "toSec": 9999,
+      "rateStart": 0.08,
+      "rateEnd": 0.6
+    }
+  ],
+  "events": [
+    {
+      "atSec": 120,
+      "kind": "ELITE",
+      "enemyId": "crawler",
+      "count": 3
+    },
+    {
+      "atSec": 240,
+      "kind": "ELITE",
+      "enemyId": "bloater",
+      "count": 3
+    },
+    {
+      "atSec": 300,
+      "kind": "ENCIRCLE",
+      "enemyId": "mite",
+      "count": 48
+    },
+    {
+      "atSec": 360,
+      "kind": "ELITE",
+      "enemyId": "brute",
+      "count": 2
+    },
+    {
+      "atSec": 480,
+      "kind": "ELITE",
+      "enemyId": "brute",
+      "count": 4
+    },
+    {
+      "atSec": 520,
+      "kind": "ENCIRCLE",
+      "enemyId": "crawler",
+      "count": 40
+    },
+    {
+      "atSec": 570,
+      "kind": "BOSS",
+      "enemyId": "matron",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,322 @@
+import type { FactionPalette, SpriteArchetype } from '../domain/survivor/types';
+
+/**
+ * 서바이벌 모드 오리지널 12x12 도트 맵.
+ * 범례: . 투명 / o 외곽선 / p 주색 / d 보조(그늘)색 / a 강조색 / h 하이라이트 / w 백색광 / k 검은 디테일
+ */
+export const SPRITE_SIZE = 12;
+
+const MAPS: Record<SpriteArchetype, readonly string[]> = {
+  COMMANDER: [
+    '....oooo....',
+    '...ohhppo...',
+    '...oaaaao...',
+    '...ophhpo...',
+    '..oddppddo..',
+    '.odpppppppo.',
+    '.odpaaaappo.',
+    '.odpppppdo..',
+    '..odppppdo..',
+    '..opo..opo..',
+    '..odo..odo..',
+    '..oo....oo..',
+  ],
+  SOLDIER: [
+    '....ooo.....',
+    '...ohppo....',
+    '...oaaao....',
+    '...ohppo....',
+    '..oddppdoooo',
+    '..odpppdkkko',
+    '..odpppdoooo',
+    '..oddpddo...',
+    '...oppppo...',
+    '...opoopo...',
+    '...odoodo...',
+    '...oo..oo...',
+  ],
+  FLAMER: [
+    '...oooo.....',
+    '..ohhppo....',
+    '..oaaaaooo..',
+    '.oddpppdaao.',
+    'odddpppdooo.',
+    'odadppppdo..',
+    'odddpppppo..',
+    '.odpppppdo..',
+    '..oppppppo..',
+    '..opo..opo..',
+    '..odo..odo..',
+    '..oo....oo..',
+  ],
+  WALKER: [
+    '............',
+    '....oooo....',
+    '...okkkkooo.',
+    '..ohhpppdkko',
+    '.ohpppppdoo.',
+    '.odpaappdo..',
+    '.oddddddddo.',
+    '..oo.oo.oo..',
+    '...o.oo.o...',
+    '..od.oo.do..',
+    '.odo....odo.',
+    '.oo......oo.',
+  ],
+  DRONE: [
+    '............',
+    '.....oo.....',
+    '....oaao....',
+    '..oooooooo..',
+    '.ohhppppppo.',
+    'ohpppwwpppdo',
+    'odppwaawppdo',
+    '.oddddddddo.',
+    '..oo.oo.oo..',
+    '...a....a...',
+    '............',
+    '............',
+  ],
+  CLAW: [
+    '............',
+    '..o.....o...',
+    '.oao...oao..',
+    '.opdo.odpo..',
+    '..oppooppo..',
+    '.ohppppppdo.',
+    'ohpaappppddo',
+    'oppppppppdo.',
+    '.odpppppdo..',
+    '.oo.oo.oo.o.',
+    '.a..a..a..a.',
+    '............',
+  ],
+  SPITTER: [
+    '............',
+    '....oooo....',
+    '...ohhppo...',
+    '..ohppppdo..',
+    '..opaappdo..',
+    '..oppppppoo.',
+    '..odppppdkao',
+    '...odddddoo.',
+    '....opppo...',
+    '...odpdpdo..',
+    '...oo.o.oo..',
+    '............',
+  ],
+  SPEWER: [
+    '............',
+    '..oooooo....',
+    '.ohhppppoo..',
+    'ohpppppppdo.',
+    'opaappppkkao',
+    'oppppppkkkao',
+    'odpppppdooo.',
+    '.odddddddo..',
+    '.opo.opo.o..',
+    '.odo.odo.o..',
+    '.oo..oo..o..',
+    '............',
+  ],
+  BEETLE: [
+    '............',
+    '....oooo....',
+    '..oohhppoo..',
+    '.ohhppppppo.',
+    'ohpppaapppdo',
+    'opppapapppdo',
+    'oppppaappddo',
+    'odpppppppddo',
+    '.oddddddddo.',
+    '.oaoaoaoaoo.',
+    '..o.o.o.o...',
+    '............',
+  ],
+  KNIGHT: [
+    '.....oa.....',
+    '....oao...o.',
+    '...ohhpo.owo',
+    '...oaaao.owo',
+    '..ohhppdoowo',
+    '.ohpppppdoao',
+    '.opaappppdo.',
+    '.odpppppdo..',
+    '..oppppppo..',
+    '..opo..opo..',
+    '..odo..odo..',
+    '..oo....oo..',
+  ],
+  PRISM: [
+    '.....oo.....',
+    '....ohwo....',
+    '...ohhaao...',
+    '..ohhpaado..',
+    '.ohhppaaddo.',
+    'ohhpppaadddo',
+    '.odppaaddo..',
+    '..odpaado...',
+    '...odado....',
+    '....odo.....',
+    '.....o......',
+    '...a...a....',
+  ],
+  LANCER: [
+    '.....ooo...a',
+    '....ohpo..aw',
+    '....oaao.aw.',
+    '....ohpo.ao.',
+    '...oddpdoo..',
+    '..odppppdo..',
+    '..odpaappo..',
+    '...odppdo...',
+    '...opppo....',
+    '...opoopo...',
+    '...odoodo...',
+    '...oo..oo...',
+  ],
+  ORB: [
+    '............',
+    '....oooo....',
+    '..oowwhhoo..',
+    '.owwhhppppo.',
+    '.ohhpaappdo.',
+    'ohhpaawapddo',
+    'ohppaaaappdo',
+    '.oppppppddo.',
+    '.odpppdddo..',
+    '..oodddoo...',
+    '....oooo....',
+    '............',
+  ],
+  MITE: [
+    '............',
+    '............',
+    '...o....o...',
+    '....o..o....',
+    '...oooooo...',
+    '..ohhpppdo..',
+    '.oapppppado.',
+    '..odpppddo..',
+    '...oddddo...',
+    '..o.o..o.o..',
+    '............',
+    '............',
+  ],
+  CRAWLER: [
+    '............',
+    '............',
+    '..oooo......',
+    '.ohhppoooo..',
+    'oaapppphhpo.',
+    'okapppppppdo',
+    'oppddppddddo',
+    '.odddoodddo.',
+    '.o.o.o.o.o..',
+    '............',
+    '............',
+    '............',
+  ],
+  BLOATER: [
+    '............',
+    '...oooooo...',
+    '..ohhppppo..',
+    '.ohwhppappo.',
+    '.ohhpppapado',
+    'oppppapppado',
+    'oppaappppddo',
+    'odpppppppddo',
+    '.odpppppddo.',
+    '..odddddoo..',
+    '..o.o..o.o..',
+    '............',
+  ],
+  BRUTE: [
+    '..oo....oo..',
+    '.oaao..oaao.',
+    '.opdooooodpo',
+    '..ohhppppdo.',
+    '.ohppakappdo',
+    'ohppppppppdo',
+    'odppppppppdo',
+    'odapppppppao',
+    '.odddppdddo.',
+    '..opo..opo..',
+    '..odo..odo..',
+    '.ooo....ooo.',
+  ],
+  MATRON: [
+    '..a..a..a...',
+    '..oaoaoaoo..',
+    '.ohhppppppo.',
+    'ohpakppkapdo',
+    'ohppppppppdo',
+    'opppoooopddo',
+    'oppokkkkopdo',
+    'odppoooopddo',
+    'odapppppaddo',
+    '.odddddddddo',
+    'o.oo.oo.oo.o',
+    'a..a..a..a..',
+  ],
+};
+
+export function getSpriteMap(archetype: SpriteArchetype): readonly string[] {
+  return MAPS[archetype];
+}
+
+export function getAllArchetypes(): SpriteArchetype[] {
+  return Object.keys(MAPS) as SpriteArchetype[];
+}
+
+type Rgb = [number, number, number];
+
+function hexToRgb(hex: string): Rgb {
+  const v = parseInt(hex.replace('#', ''), 16);
+  return [(v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
+}
+
+function lighten([r, g, b]: Rgb, k: number): Rgb {
+  return [
+    Math.round(r + (255 - r) * k),
+    Math.round(g + (255 - g) * k),
+    Math.round(b + (255 - b) * k),
+  ];
+}
+
+export const OUTLINE_RGB: Rgb = [7, 10, 16];
+
+/** 순수 함수: 도트 맵 + 팔레트 → RGBA 버퍼 (테스트 가능, DOM 불필요) */
+export function renderSpritePixels(
+  archetype: SpriteArchetype,
+  palette: FactionPalette
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const map = MAPS[archetype];
+  const primary = hexToRgb(palette.primary);
+  const colors: Record<string, Rgb> = {
+    o: OUTLINE_RGB,
+    p: primary,
+    d: hexToRgb(palette.secondary),
+    a: hexToRgb(palette.accent),
+    h: lighten(primary, 0.38),
+    w: [244, 246, 255],
+    k: [26, 29, 38],
+  };
+  const size = SPRITE_SIZE;
+  const data = new Uint8ClampedArray(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    const row = (map[y] ?? '').padEnd(size, '.');
+    for (let x = 0; x < size; x += 1) {
+      const c = colors[row[x]];
+      if (!c) {
+        continue;
+      }
+      const i = (y * size + x) * 4;
+      data[i] = c[0];
+      data[i + 1] = c[1];
+      data[i + 2] = c[2];
+      data[i + 3] = 255;
+    }
+  }
+  return { width: size, height: size, data };
+}
