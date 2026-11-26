@@ -14,10 +14,11 @@ describe('SurvivorSprites', () => {
   const hivePalette = { primary: '#8f4fa8', secondary: '#4e2a5e', accent: '#b8e04a' };
   const lumenPalette = { primary: '#e0c060', secondary: '#7a5a20', accent: '#5fd8f0' };
 
-  it('every archetype renders an 18x18 multi-shaded pixel sprite with dark outline and 2-frame animation', () => {
+  it('every archetype renders a 32x32 studio cluster-shaded pixel sprite with dark outline and 2-frame animation', () => {
     for (const a of getAllArchetypes()) {
       const buf0 = renderSpritePixels(a, ironcladPalette, 0);
       const buf1 = renderSpritePixels(a, ironcladPalette, 1);
+      expect(buf0.width).toBe(32);
       expect(buf0.width).toBe(SPRITE_SIZE);
       expect(buf0.height).toBe(SPRITE_SIZE);
 
@@ -47,9 +48,9 @@ describe('SurvivorSprites', () => {
         }
       }
 
-      expect(opaque).toBeGreaterThan(45);
-      expect(outline).toBeGreaterThan(16);
-      expect(colorSet.size).toBeGreaterThanOrEqual(6);
+      expect(opaque).toBeGreaterThan(220);
+      expect(outline).toBeGreaterThan(60);
+      expect(colorSet.size).toBeGreaterThanOrEqual(12);
       expect(diffPixels).toBeGreaterThan(0);
     }
   });
