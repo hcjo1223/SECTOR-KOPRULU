@@ -34,6 +34,7 @@ export class SceneManager {
   public readonly worldContainer: Container;
 
   private readonly gridBgLayer: Container;
+  private readonly tilesContainer: Container;
   private readonly gridGraphics: Graphics;
   private readonly highlightGraphics: Graphics;
   private readonly unitsLayer: Container;
@@ -53,12 +54,14 @@ export class SceneManager {
 
     this.worldContainer = new Container();
     this.gridBgLayer = new Container();
+    this.tilesContainer = new Container();
     this.gridGraphics = new Graphics();
     this.highlightGraphics = new Graphics();
     this.unitsLayer = new Container();
     this.unitsLayer.sortableChildren = true;
     this.dragGhostLayer = new Container();
 
+    this.gridBgLayer.addChild(this.tilesContainer);
     this.gridBgLayer.addChild(this.gridGraphics);
     this.gridBgLayer.addChild(this.highlightGraphics);
 
@@ -176,63 +179,47 @@ export class SceneManager {
     const totalHeight = dims.rows * TILE_SIZE;
 
     g.clear();
+    const oldTiles = this.tilesContainer.removeChildren();
+    for (let i = 0; i < oldTiles.length; i++) {
+      oldTiles[i].destroy();
+    }
 
-    // Subtle battlefield chassis frame
+    // Outer chassis frame
     g.rect(-4, -4, totalWidth + 8, totalHeight + 8);
-    g.fill({ color: 0x05080f });
-    g.stroke({ width: 1.5, color: 0x1e293b });
+    g.stroke({ width: 2, color: 0x1e293b });
 
     for (let row = 0; row < dims.rows; row++) {
       for (let col = 0; col < dims.totalCols; col++) {
         const x = col * TILE_SIZE;
         const y = row * TILE_SIZE;
-        const zone = getZoneAt(col, row, this.currentGridSize);
-        const isChecker = (row + col) % 2 === 0;
+        const zone = getZoneAt(col, row, this.currentGridSize) ?? 'CENTER';
+        const variant: 0 | 1 = (row + col) % 2 === 0 ? 0 : 1;
 
-        if (zone === 'ALLY') {
-          let baseColor = isChecker ? 0x101c2d : 0x0d1726;
-          if (this.currentRace === 'ZERG') {
-            baseColor = isChecker ? 0x181326 : 0x130f20;
-          } else if (this.currentRace === 'PROTOSS') {
-            baseColor = isChecker ? 0x141b29 : 0x101622;
-          }
-
-          g.rect(x, y, TILE_SIZE, TILE_SIZE);
-          g.fill({ color: baseColor });
-          g.rect(x + 0.5, y + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
-          g.stroke({ width: 1, color: 0x1e3a5f, alpha: 0.75 });
-
-          // Pixel tactical corner dots
-          g.rect(x + 2, y + 2, 1, 1);
-          g.fill({ color: 0x38bdf8, alpha: 0.35 });
-        } else if (zone === 'CENTER') {
-          g.rect(x, y, TILE_SIZE, TILE_SIZE);
-          g.fill({ color: isChecker ? 0x0a0e16 : 0x080b12 });
-          g.rect(x + 0.5, y + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
-          g.stroke({ width: 1, color: 0x1f2937, alpha: 0.55 });
-
-          // Center hazard tick marks
-          g.rect(x + 14, y + 15, 4, 2);
-          g.fill({ color: 0x334155, alpha: 0.55 });
-        } else {
-          g.rect(x, y, TILE_SIZE, TILE_SIZE);
-          g.fill({ color: isChecker ? 0x1c1218 : 0x160e13 });
-          g.rect(x + 0.5, y + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
-          g.stroke({ width: 1, color: 0x4c1d24, alpha: 0.75 });
-
-          g.rect(x + TILE_SIZE - 3, y + 2, 1, 1);
-          g.fill({ color: 0xef4444, alpha: 0.35 });
-        }
+        const tileTex = AssetLoader.getTerrainTileTexture(
+          zone,
+          this.currentRace,
+          variant
+        );
+        const tileSprite = new Sprite(tileTex);
+        tileSprite.x = x;
+        tileSprite.y = y;
+        this.tilesContainer.addChild(tileSprite);
       }
     }
 
-    // Zone boundary outlines
+    // Tactical Zone boundary outlines
+    const allyBorderColor =
+      this.currentRace === 'ZERG'
+        ? 0xa855f7
+        : this.currentRace === 'PROTOSS'
+          ? 0xfacc15
+          : 0x38bdf8;
     g.rect(0, 0, dims.allyCols * TILE_SIZE, totalHeight);
-    g.stroke({ width: 1.5, color: 0x38bdf8, alpha: 0.55 });
+    g.stroke({ width: 1.5, color: allyBorderColor, alpha: 0.65 });
 
     const enemyX = (dims.allyCols + dims.centerCols) * TILE_SIZE;
     g.rect(enemyX, 0, dims.enemyCols * TILE_SIZE, totalHeight);
-    g.stroke({ width: 1.5, color: 0xef4444, alpha: 0.55 });
+    g.stroke({ width: 1.5, color: 0xef4444, alpha: 0.6 });
 
     this.redrawHighlight();
   }

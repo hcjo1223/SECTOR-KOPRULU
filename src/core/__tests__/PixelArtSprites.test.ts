@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { getAllUnits } from '../../domain/UnitCatalog';
-import { renderUnitPixelBuffer } from '../PixelArtSprites';
+import {
+  renderTerrainTileBuffer,
+  renderUnitPixelBuffer,
+} from '../PixelArtSprites';
 
-describe('PixelArtSprites (18 StarCraft Units)', () => {
-  it('renders crisp non-empty pixel art buffers with 1px dark outline and 2-frame animation for all 18 units', () => {
+describe('PixelArtSprites (High-Detail Volumetric Dithered 18 StarCraft Units)', () => {
+  it('renders rich multi-stop dithered pixel art with ambient occlusion and 1px outline for all 18 units', () => {
     const units = getAllUnits();
     expect(units).toHaveLength(18);
 
@@ -42,9 +45,10 @@ describe('PixelArtSprites (18 StarCraft Units)', () => {
         }
       }
 
+      // Every unit must have rich color depth (12+ distinct shaded/dithered colors), 1px outline, and frame animation
       expect(opaqueCount).toBeGreaterThan(80);
       expect(outlineCount).toBeGreaterThan(30);
-      expect(colorSet.size).toBeGreaterThanOrEqual(5);
+      expect(colorSet.size).toBeGreaterThanOrEqual(12);
       expect(diffBetweenFrames).toBeGreaterThan(0);
 
       let flippedOpaqueCount = 0;
@@ -54,6 +58,20 @@ describe('PixelArtSprites (18 StarCraft Units)', () => {
         }
       }
       expect(flippedOpaqueCount).toBe(opaqueCount);
+    }
+  });
+
+  it('renders 32x32 detailed pixel terrain tiles for all races and zones', () => {
+    const tTile = renderTerrainTileBuffer('ALLY', 'TERRAN', 0);
+    const zTile = renderTerrainTileBuffer('ALLY', 'ZERG', 0);
+    const pTile = renderTerrainTileBuffer('ALLY', 'PROTOSS', 0);
+    const cTile = renderTerrainTileBuffer('CENTER', 'TERRAN', 0);
+    const eTile = renderTerrainTileBuffer('ENEMY', 'TERRAN', 0);
+
+    for (const tile of [tTile, zTile, pTile, cTile, eTile]) {
+      expect(tile.width).toBe(32);
+      expect(tile.height).toBe(32);
+      expect(tile.isOpaque(16, 16)).toBe(true);
     }
   });
 });

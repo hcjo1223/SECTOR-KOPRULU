@@ -1,11 +1,16 @@
 import { Assets, CanvasSource, Texture, TextureStyle } from 'pixi.js';
-import type { UnitDefinition } from '../domain/types';
-import { renderUnitPixelBuffer } from './PixelArtSprites';
+import type { Race, UnitDefinition, ZoneType } from '../domain/types';
+import {
+  type PixelBuffer,
+  renderTerrainTileBuffer,
+  renderUnitPixelBuffer,
+} from './PixelArtSprites';
 
 export class AssetLoader {
   private static initialized = false;
   private static textureCache = new Map<string, Texture>();
   private static dataUrlCache = new Map<string, string>();
+  private static tileTextureCache = new Map<string, Texture>();
 
   public static init(): void {
     if (this.initialized) {
@@ -38,7 +43,7 @@ export class AssetLoader {
       return existing;
     }
 
-    const canvas = this.createPixelCanvas(def, facing, normFrame);
+    const canvas = this.bufferToCanvas(renderUnitPixelBuffer(def, facing, normFrame));
     const source = new CanvasSource({
       resource: canvas,
       scaleMode: 'nearest',
@@ -61,18 +66,35 @@ export class AssetLoader {
       return existing;
     }
 
-    const canvas = this.createPixelCanvas(def, facing, normFrame);
+    const canvas = this.bufferToCanvas(renderUnitPixelBuffer(def, facing, normFrame));
     const url = canvas.toDataURL('image/png');
     this.dataUrlCache.set(cacheKey, url);
     return url;
   }
 
-  private static createPixelCanvas(
-    def: UnitDefinition,
-    facing: 1 | -1,
-    frame: number
-  ): HTMLCanvasElement {
-    const pixelBuf = renderUnitPixelBuffer(def, facing, frame);
+  public static getTerrainTileTexture(
+    zone: ZoneType,
+    race: Race,
+    variant: 0 | 1
+  ): Texture {
+    this.init();
+    const key = `tile_${zone}_${race}_${variant}`;
+    const existing = this.tileTextureCache.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    const canvas = this.bufferToCanvas(renderTerrainTileBuffer(zone, race, variant));
+    const source = new CanvasSource({
+      resource: canvas,
+      scaleMode: 'nearest',
+    });
+    const texture = new Texture({ source });
+    this.tileTextureCache.set(key, texture);
+    return texture;
+  }
+
+  private static bufferToCanvas(pixelBuf: PixelBuffer): HTMLCanvasElement {
     const canvas = document.createElement('canvas');
     canvas.width = pixelBuf.width;
     canvas.height = pixelBuf.height;
