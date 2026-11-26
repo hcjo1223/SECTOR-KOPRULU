@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
+import { AssetLoader } from '../core/AssetLoader';
 import type { GameApp } from '../core/GameApp';
 import { getMaxCapacity } from '../domain/grid/GridSystem';
 import { getUnitDefinition, getUnitsByRace } from '../domain/UnitCatalog';
-import type { GameSpeed, GridSize, UnitDefinition } from '../domain/types';
+import type { GameSpeed, GridSize, Race, UnitDefinition } from '../domain/types';
 import { useGameStore } from '../store/useGameStore';
 
 interface PrepOverlayProps {
   gameAppRef: React.RefObject<GameApp | null>;
 }
 
+const RACES: readonly Race[] = ['TERRAN', 'ZERG', 'PROTOSS'];
 const GRID_SIZES: readonly GridSize[] = [3, 4, 5];
 const SPEEDS: readonly GameSpeed[] = [1, 2, 4];
 
@@ -23,6 +25,7 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
   const statusBanner = useGameStore((s) => s.statusBanner);
   const synergySummary = useGameStore((s) => s.synergySummary);
 
+  const startGame = useGameStore((s) => s.startGame);
   const returnToTitle = useGameStore((s) => s.returnToTitle);
   const setGridSize = useGameStore((s) => s.setGridSize);
   const setSpeed = useGameStore((s) => s.setSpeed);
@@ -69,8 +72,13 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
         ev.clientX,
         ev.clientY
       );
-      if (!dropped && Math.hypot(ev.clientX - dragPayload.clientX, ev.clientY - dragPayload.clientY) < 6) {
-        // Short click on card -> toggle selection for click-to-place
+      if (
+        !dropped &&
+        Math.hypot(
+          ev.clientX - dragPayload.clientX,
+          ev.clientY - dragPayload.clientY
+        ) < 6
+      ) {
         const currentSelected = useGameStore.getState().selectedRosterUnitId;
         selectRosterUnit(
           currentSelected === dragPayload.unitId ? null : dragPayload.unitId
@@ -106,20 +114,46 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
     <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-2.5 sm:p-3">
       {/* Top HUD Bar */}
       <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 rounded border border-slate-700/80 bg-[#0b111c]/92 px-3 py-1.5 backdrop-blur-xs">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={returnToTitle}
-            className="cursor-pointer rounded border border-slate-700 bg-slate-800/80 px-2 py-1 font-mono-tech text-[11px] text-slate-300 hover:border-slate-500 hover:text-white"
+            className="cursor-pointer rounded border border-slate-700 bg-slate-800/80 px-2 py-0.5 font-mono-tech text-[11px] text-slate-300 hover:border-slate-500 hover:text-white"
           >
-            ◀ 종족
+            ◀ 타이틀
           </button>
-          <div className="flex items-center gap-2">
-            <span className="font-pixel text-xs text-sky-400">{selectedRace}</span>
-            <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[11px] text-slate-200">
-              병력 {allyCount}/{maxCapacity}
-            </span>
+
+          {/* Direct Race Switcher Tabs */}
+          <div className="flex items-center rounded border border-slate-700/90 bg-slate-900/90 p-0.5">
+            {RACES.map((race) => (
+              <button
+                key={race}
+                type="button"
+                onClick={() => {
+                  const prevSize = useGameStore.getState().gridSize;
+                  startGame(race);
+                  if (prevSize !== 3) {
+                    setGridSize(prevSize);
+                  }
+                }}
+                className={`cursor-pointer rounded px-2 py-0.5 font-pixel text-[10px] transition-colors ${
+                  selectedRace === race
+                    ? race === 'TERRAN'
+                      ? 'bg-sky-600 text-white'
+                      : race === 'ZERG'
+                        ? 'bg-fuchsia-700 text-white'
+                        : 'bg-amber-500 text-slate-950 font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {race}
+              </button>
+            ))}
           </div>
+
+          <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[11px] text-slate-200">
+            병력 {allyCount}/{maxCapacity}
+          </span>
         </div>
 
         {/* Grid Expansion Controls (3x3 -> 4x4 -> 5x5) */}
@@ -212,28 +246,35 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
           </div>
         )}
 
-        {/* Right: Unit Inspector */}
+        {/* Right: Unit Inspector with Pixel Portrait */}
         {inspectedDef && (
-          <div className="pointer-events-auto w-[196px] rounded border border-slate-700/90 bg-[#0b111c]/92 p-2.5 text-xs backdrop-blur-xs">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-semibold text-slate-100">
-                  {inspectedDef.name}
+          <div className="pointer-events-auto w-[198px] rounded border border-slate-700/90 bg-[#0b111c]/92 p-2.5 text-xs backdrop-blur-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-slate-700/80 bg-[#05080f]">
+                <img
+                  src={AssetLoader.getUnitDataUrl(inspectedDef, 1, 0)}
+                  alt={inspectedDef.name}
+                  className="pixelated h-10 w-10 object-contain"
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-semibold text-slate-100">
+                  {inspectedDef.name.split(' (')[0]}
                 </div>
                 <div className="font-mono-tech text-[10px] text-slate-400">
                   T{inspectedDef.tier} · {inspectedDef.visual.sprite_size}px ·{' '}
                   {inspectedDef.base_stats.armor_type}
                 </div>
+                {selectedPlaced && selectedPlaced.faction === 'ALLY' && (
+                  <button
+                    type="button"
+                    onClick={() => removePlacedUnit(selectedPlaced.instanceId)}
+                    className="mt-1 cursor-pointer rounded border border-rose-700/80 bg-rose-950/70 px-1.5 py-0.5 font-mono-tech text-[9px] text-rose-300 hover:bg-rose-900/80"
+                  >
+                    회수
+                  </button>
+                )}
               </div>
-              {selectedPlaced && selectedPlaced.faction === 'ALLY' && (
-                <button
-                  type="button"
-                  onClick={() => removePlacedUnit(selectedPlaced.instanceId)}
-                  className="cursor-pointer rounded border border-rose-700/80 bg-rose-950/70 px-1.5 py-0.5 font-mono-tech text-[10px] text-rose-300 hover:bg-rose-900/80"
-                >
-                  회수
-                </button>
-              )}
             </div>
 
             <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 font-mono-tech text-[10px] text-slate-300">
@@ -264,14 +305,14 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
         )}
       </div>
 
-      {/* Bottom Dock: Roster Recruitment & Drag-to-Place */}
+      {/* Bottom Dock: Roster Recruitment & Drag-to-Place with Pixel Art Portraits */}
       <div className="pointer-events-auto rounded border border-slate-700/80 bg-[#0b111c]/94 px-3 py-2 backdrop-blur-xs">
         <div className="mb-1.5 flex items-center justify-between text-[11px] text-slate-400">
           <span>
-            <strong className="text-slate-200">병력 배치</strong> — 카드를 드래그하여 아군(파랑) 그리드에 놓거나 <kbd className="rounded bg-slate-800 px-1 text-[10px] text-slate-200">+배치</kbd> 클릭 · 그리드 유닛 우클릭 시 회수
+            <strong className="text-slate-200">병력 배치</strong> — 픽셀 유닛 카드를 드래그하여 아군(파랑) 그리드에 놓거나 <kbd className="rounded bg-slate-800 px-1 text-[10px] text-slate-200">+배치</kbd> 클릭 · 그리드 유닛 우클릭 시 회수
           </span>
           <span className="font-mono-tech text-[10px] text-slate-500">
-            M1 · GRID CORE SANDBOX
+            PIXEL SPRITE ROSTER ({selectedRace})
           </span>
         </div>
 
@@ -285,35 +326,41 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
                 onPointerDown={(ev) => handleRosterPointerDown(unit.unit_id, ev)}
                 onMouseEnter={() => setHoveredRosterDef(unit)}
                 onMouseLeave={() => setHoveredRosterDef(null)}
-                className={`group flex cursor-grab flex-col justify-between rounded border px-2 py-1.5 transition-colors active:cursor-grabbing ${
+                className={`group flex cursor-grab items-center gap-2 rounded border px-2 py-1.5 transition-colors active:cursor-grabbing ${
                   isSelected
                     ? 'border-sky-400 bg-sky-950/60'
                     : 'border-slate-700/80 bg-slate-900/90 hover:border-slate-500'
                 }`}
               >
-                <div className="flex items-center justify-between gap-1">
-                  <span className="font-pixel text-[11px] text-slate-100">
-                    {unit.visual.short_code}
-                  </span>
-                  <span className="rounded bg-slate-800 px-1 font-mono-tech text-[9px] text-amber-300">
-                    T{unit.tier}
-                  </span>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-slate-800 bg-[#05080f]">
+                  <img
+                    src={AssetLoader.getUnitDataUrl(unit, 1, 0)}
+                    alt={unit.name}
+                    className="pixelated h-9 w-9 object-contain"
+                  />
                 </div>
-                <div className="mt-0.5 truncate text-[11px] text-slate-300">
-                  {unit.name.split(' (')[0]}
-                </div>
-                <div className="mt-1 flex items-center justify-between">
-                  <span className="font-mono-tech text-[9px] text-slate-500">
-                    {unit.visual.sprite_size}px
-                  </span>
-                  <button
-                    type="button"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => quickDeployFromRoster(unit.unit_id)}
-                    className="cursor-pointer rounded bg-sky-600/80 px-1.5 py-0.5 font-mono-tech text-[9px] text-white hover:bg-sky-500"
-                  >
-                    +배치
-                  </button>
+                <div className="flex min-w-0 flex-1 flex-col justify-between">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="truncate text-[11px] font-medium text-slate-200">
+                      {unit.name.split(' (')[0]}
+                    </span>
+                    <span className="rounded bg-slate-800 px-1 font-mono-tech text-[9px] text-amber-300">
+                      T{unit.tier}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between">
+                    <span className="font-mono-tech text-[9px] text-slate-500">
+                      {unit.visual.short_code}
+                    </span>
+                    <button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => quickDeployFromRoster(unit.unit_id)}
+                      className="cursor-pointer rounded bg-sky-600/85 px-1.5 py-0.5 font-mono-tech text-[9px] text-white hover:bg-sky-500"
+                    >
+                      +배치
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -321,15 +368,25 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
         </div>
       </div>
 
-      {/* Floating drag pill for roster drag feedback */}
-      {dragPayload && dragPayload.source === 'ROSTER' && (
-        <div
-          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 rounded border border-sky-400 bg-slate-950/90 px-2 py-1 font-pixel text-[11px] text-sky-200 shadow-lg"
-          style={{ left: dragPayload.clientX, top: dragPayload.clientY }}
-        >
-          {getUnitDefinition(dragPayload.unitId)?.visual.short_code ?? dragPayload.unitId}
-        </div>
-      )}
+      {/* Floating drag sprite for roster drag feedback */}
+      {dragPayload && dragPayload.source === 'ROSTER' && (() => {
+        const dragDef = getUnitDefinition(dragPayload.unitId);
+        return (
+          <div
+            className="pointer-events-none fixed z-50 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded border border-sky-400 bg-slate-950/92 px-2 py-1 font-pixel text-[11px] text-sky-200 shadow-lg"
+            style={{ left: dragPayload.clientX, top: dragPayload.clientY }}
+          >
+            {dragDef && (
+              <img
+                src={AssetLoader.getUnitDataUrl(dragDef, 1, 0)}
+                alt={dragDef.name}
+                className="pixelated h-7 w-7 object-contain"
+              />
+            )}
+            <span>{dragDef?.visual.short_code ?? dragPayload.unitId}</span>
+          </div>
+        );
+      })()}
     </div>
   );
 };

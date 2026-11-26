@@ -128,6 +128,38 @@
     }
   },
   {
+    "unit_id": "zerg_mutalisk",
+    "name": "뮤탈리스크 (Mutalisk)",
+    "race": "ZERG",
+    "tier": 3,
+    "cost": 6,
+    "grid_size": 1,
+    "tags": ["BIO", "AIR", "RANGED", "SWARM"],
+    "base_stats": {
+      "hp": 120,
+      "shield": 0,
+      "attack": 14,
+      "attack_speed": 1.25,
+      "range": 4,
+      "move_speed": 2.2,
+      "armor_type": "LIGHT"
+    },
+    "skill": {
+      "id": "glave_wurm",
+      "name": "쐐기벌레 도탄",
+      "description": "공격 시 인접한 적 최대 3기에게 쐐기벌레가 튕기며 연쇄 피해를 입힙니다.",
+      "trigger": "ON_ATTACK",
+      "effect": "BOUNCE_3_TARGETS_DECAY_33_PCT"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_zerg_units.png",
+      "sprite_size": 48,
+      "pivot_offset": [0, -12],
+      "projectile_id": "glave_wurm",
+      "short_code": "MUT"
+    }
+  },
+  {
     "unit_id": "zerg_ultralisk",
     "name": "울트라리스크 (Ultralisk)",
     "race": "ZERG",

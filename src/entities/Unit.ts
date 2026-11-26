@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite } from 'pixi.js';
+import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import { AssetLoader } from '../core/AssetLoader';
 import type { Faction, UnitDefinition } from '../domain/types';
 
@@ -11,6 +11,7 @@ export class UnitEntity {
   private readonly ringGraphics: Graphics;
   private readonly selectionGraphics: Graphics;
   private readonly sprite: Sprite;
+  private readonly frames: readonly [Texture, Texture];
   private readonly barsGraphics: Graphics;
   private readonly def: UnitDefinition;
 
@@ -21,6 +22,8 @@ export class UnitEntity {
   private currentHp: number;
   private currentShield: number;
   private isSelected = false;
+  private animTimer = 0;
+  private currentFrameIdx: 0 | 1 = 0;
 
   constructor(
     instanceId: string,
@@ -39,6 +42,7 @@ export class UnitEntity {
     this.targetY = initialY;
     this.currentHp = def.base_stats.hp;
     this.currentShield = def.base_stats.shield;
+    this.animTimer = ((initialX * 7 + initialY * 13) % 25);
 
     this.container = new Container();
     this.container.eventMode = 'static';
@@ -49,8 +53,11 @@ export class UnitEntity {
     this.barsGraphics = new Graphics();
 
     const facing = faction === 'ALLY' ? 1 : -1;
-    const texture = AssetLoader.getUnitTexture(def, facing);
-    this.sprite = new Sprite(texture);
+    this.frames = [
+      AssetLoader.getUnitTexture(def, facing, 0),
+      AssetLoader.getUnitTexture(def, facing, 1),
+    ];
+    this.sprite = new Sprite(this.frames[0]);
     this.sprite.anchor.set(0.5, 0.5);
     this.sprite.x = Math.round(def.visual.pivot_offset[0]);
     this.sprite.y = Math.round(def.visual.pivot_offset[1]);
@@ -106,6 +113,15 @@ export class UnitEntity {
       this.logicalX += dx * dtFactor;
       this.logicalY += dy * dtFactor;
     }
+
+    // 2-frame Idle pixel animation cycle
+    this.animTimer += dtFactor * 3.2;
+    if (this.animTimer >= 26) {
+      this.animTimer = 0;
+      this.currentFrameIdx = this.currentFrameIdx === 0 ? 1 : 0;
+      this.sprite.texture = this.frames[this.currentFrameIdx];
+    }
+
     this.syncTransform();
   }
 

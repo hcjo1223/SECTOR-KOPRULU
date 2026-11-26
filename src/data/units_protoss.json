@@ -96,6 +96,38 @@
     }
   },
   {
+    "unit_id": "protoss_high_templar",
+    "name": "고위 기사 (High Templar)",
+    "race": "PROTOSS",
+    "tier": 3,
+    "cost": 6,
+    "grid_size": 1,
+    "tags": ["BIO", "RANGED", "PSIONIC", "SPLASH", "SUPPORT"],
+    "base_stats": {
+      "hp": 45,
+      "shield": 65,
+      "attack": 24,
+      "attack_speed": 0.6,
+      "range": 5.5,
+      "move_speed": 1.3,
+      "armor_type": "LIGHT"
+    },
+    "skill": {
+      "id": "psionic_storm",
+      "name": "사이오닉 폭풍",
+      "description": "밀집한 적 진영에 번개 폭풍을 일으켜 강력한 광역 피해를 입힙니다.",
+      "trigger": "ON_ATTACK",
+      "effect": "STORM_AOE_RADIUS_2"
+    },
+    "visual": {
+      "sprite_sheet": "atlas_protoss_units.png",
+      "sprite_size": 32,
+      "pivot_offset": [0, -8],
+      "projectile_id": "psi_storm_bolt",
+      "short_code": "HTM"
+    }
+  },
+  {
     "unit_id": "protoss_reaver",
     "name": "파괴자 (Reaver)",
     "race": "PROTOSS",

@@ -35,11 +35,25 @@
     "size": 4
   },
   {
+    "projectile_id": "glave_wurm",
+    "speed": 11,
+    "splash_radius": 0.8,
+    "color": "#84cc16",
+    "size": 4
+  },
+  {
     "projectile_id": "disruptor_bolt",
     "speed": 10,
     "splash_radius": 0,
     "color": "#38bdf8",
     "size": 4
+  },
+  {
+    "projectile_id": "psi_storm_bolt",
+    "speed": 13,
+    "splash_radius": 2.0,
+    "color": "#7dd3fc",
+    "size": 5
   },
   {
     "projectile_id": "scarab_orb",
