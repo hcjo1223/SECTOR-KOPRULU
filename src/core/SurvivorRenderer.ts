@@ -2,11 +2,14 @@ import { CanvasSource, Container, Graphics, Sprite, Texture, TilingSprite } from
 import type { SurvivorEngine } from '../domain/survivor/SurvivorEngine';
 import type { EffectState, FactionPalette, SpriteArchetype } from '../domain/survivor/types';
 import {
+  angleToDir8,
   OUTLINE_RGB,
   renderGemPixels,
   renderGroundTilePixels,
   renderSlimeTilePixels,
   renderSpritePixels,
+  type SpriteAnim,
+  type SpriteDir8,
 } from './SurvivorSprites';
 
 export const VIRTUAL_WIDTH = 640;
@@ -32,16 +35,19 @@ function pixelsToCanvas(buf: { width: number; height: number; data: Uint8Clamped
 export function getSpriteTexture(
   archetype: SpriteArchetype,
   palette: FactionPalette,
-  frame: number = 0
+  frame: number = 0,
+  dir: SpriteDir8 = 'S',
+  anim: SpriteAnim = 'IDLE'
 ): Texture {
-  const f = Math.abs(Math.round(frame)) % 2;
-  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${f}`;
+  const maxFrames = anim === 'WALK' ? 4 : 2;
+  const f = Math.abs(Math.round(frame)) % maxFrames;
+  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${dir}|${anim}|${f}`;
   const hit = textureCache.get(key);
   if (hit) {
     return hit;
   }
   const source = new CanvasSource({
-    resource: pixelsToCanvas(renderSpritePixels(archetype, palette, f)),
+    resource: pixelsToCanvas(renderSpritePixels(archetype, palette, f, dir, anim)),
     scaleMode: 'nearest',
   });
   const tex = new Texture({ source });
@@ -49,12 +55,25 @@ export function getSpriteTexture(
   return tex;
 }
 
+const dataUrlCache = new Map<string, string>();
+
 export function getSpriteDataUrl(
   archetype: SpriteArchetype,
   palette: FactionPalette,
-  frame: number = 0
+  frame: number = 0,
+  dir: SpriteDir8 = 'S',
+  anim: SpriteAnim = 'IDLE'
 ): string {
-  return pixelsToCanvas(renderSpritePixels(archetype, palette, frame)).toDataURL();
+  const maxFrames = anim === 'WALK' ? 4 : 2;
+  const f = Math.abs(Math.round(frame)) % maxFrames;
+  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${dir}|${anim}|${f}`;
+  const hit = dataUrlCache.get(key);
+  if (hit) {
+    return hit;
+  }
+  const url = pixelsToCanvas(renderSpritePixels(archetype, palette, f, dir, anim)).toDataURL();
+  dataUrlCache.set(key, url);
+  return url;
 }
 
 function getGemTexture(tier: 1 | 2 | 3, frame: number): Texture {
@@ -403,18 +422,26 @@ export class SurvivorRenderer {
       }
     }
 
-    // ── 5. 지휘관 · 부대원 · 블라이트 무리 2프레임 32x32 픽셀 스프라이트
-    const cmdMoving = c.idleSec === 0;
-    const cmdFrame = cmdMoving ? animTick % 2 : Math.floor(this.timeSec * 3) % 2;
-    const cmdBob = cmdMoving && animTick % 2 === 1 ? 1 : 0;
+    // ── 5. 지휘관 · 부대원 · 블라이트 무리 8방향(8-Dir) & 다중 상태(IDLE / WALK / ATTACK) 32x32 스프라이트
+    const walkTick = Math.floor(this.timeSec * 10);
+    const idleTick = Math.floor(this.timeSec * 3);
+
+    const cmdDir = angleToDir8(c.facingAngle);
+    const cmdAnim: SpriteAnim = c.attackFlashSec > 0 ? 'ATTACK' : c.moving ? 'WALK' : 'IDLE';
+    const cmdFrame =
+      cmdAnim === 'ATTACK'
+        ? c.attackFlashSec > 0.11
+          ? 0
+          : 1
+        : cmdAnim === 'WALK'
+          ? walkTick % 4
+          : idleTick % 2;
     this.placeSprite(
       c.id,
-      getSpriteTexture(c.def.sprite, palette, cmdFrame),
+      getSpriteTexture(c.def.sprite, palette, cmdFrame, cmdDir, cmdAnim),
       camX,
       camY,
-      c.facingX,
       1,
-      cmdBob,
       c.sinceHitSec < 0.12 ? 0xff7070 : 0xffffff
     );
 
@@ -431,17 +458,23 @@ export class SurvivorRenderer {
       if (engine.isEntrenched && (animTick + m.id) % 2 === 0) {
         gf.rect(imx + 9, imy - 16, 1, 3).fill({ color: accentCol, alpha: 0.85 });
       }
-      const mFrame = m.attackFlashSec > 0 ? 1 : (animTick + m.id) % 2;
-      const mBob = m.attackFlashSec > 0 ? 0 : (animTick + m.id) % 2;
+      const mDir = angleToDir8(m.facingAngle);
+      const mAnim: SpriteAnim = m.attackFlashSec > 0 ? 'ATTACK' : m.moving ? 'WALK' : 'IDLE';
+      const mFrame =
+        mAnim === 'ATTACK'
+          ? m.attackFlashSec > 0.11
+            ? 0
+            : 1
+          : mAnim === 'WALK'
+            ? (walkTick + m.id) % 4
+            : (idleTick + m.id) % 2;
       const tint = m.sinceHitSec < 0.1 ? 0xff7070 : 0xffffff;
       this.placeSprite(
         m.id,
-        getSpriteTexture(m.def.sprite, palette, mFrame),
+        getSpriteTexture(m.def.sprite, palette, mFrame, mDir, mAnim),
         mx,
         my,
-        m.facingX,
         1,
-        mBob,
         tint
       );
     }
@@ -463,17 +496,21 @@ export class SurvivorRenderer {
         drawPixelCircle(gf, iex, iey, Math.round(11 * e.scale), 0xffc840, 0.6, 1, 2);
       }
 
-      const eFrame = (animTick + e.id) % 2;
-      const eBob = (animTick + e.id) % 2 === 1 ? 1 : 0;
+      const eDir = angleToDir8(e.facingAngle);
+      const eAnim: SpriteAnim = e.attackFlashSec > 0 ? 'ATTACK' : 'WALK';
+      const eFrame =
+        eAnim === 'ATTACK'
+          ? e.attackFlashSec > 0.11
+            ? 0
+            : 1
+          : (walkTick + e.id) % 4;
       const tint = e.hitFlashSec > 0 ? 0xff9090 : e.isElite ? 0xffe6a8 : 0xffffff;
       this.placeSprite(
         e.id,
-        getSpriteTexture(e.def.sprite, e.def.palette, eFrame),
+        getSpriteTexture(e.def.sprite, e.def.palette, eFrame, eDir, eAnim),
         ex,
         ey,
-        e.facingX,
         e.scale,
-        eBob,
         tint
       );
     }
@@ -829,15 +866,13 @@ export class SurvivorRenderer {
     tex: Texture,
     x: number,
     y: number,
-    facingX: number,
     scale: number,
-    bob: number,
     tint: number
   ): void {
     let p = this.sprites.get(id);
     if (!p) {
       const sprite = new Sprite(tex);
-      sprite.anchor.set(0.5, 0.78);
+      sprite.anchor.set(0.5, 0.82);
       this.unitLayer.addChild(sprite);
       p = { sprite, seenFrame: this.frame };
       this.sprites.set(id, p);
@@ -847,8 +882,8 @@ export class SurvivorRenderer {
     if (s.texture !== tex) {
       s.texture = tex;
     }
-    s.position.set(Math.round(x), Math.round(y) - bob);
-    s.scale.set(scale * (facingX < 0 ? -1 : 1), scale);
+    s.position.set(Math.round(x), Math.round(y));
+    s.scale.set(scale, scale);
     s.tint = tint;
     s.zIndex = Math.round(y);
   }

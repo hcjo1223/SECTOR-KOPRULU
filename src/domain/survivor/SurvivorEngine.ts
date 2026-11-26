@@ -295,12 +295,16 @@ export class SurvivorEngine {
   private updateCommanderMovement(dt: number): void {
     const c = this.commander;
     const moving = this.moveX !== 0 || this.moveY !== 0;
+    c.moving = moving;
     if (moving) {
       const len = Math.hypot(this.moveX, this.moveY);
       c.dirX = this.moveX / len;
       c.dirY = this.moveY / len;
       if (Math.abs(c.dirX) > 0.15) {
         c.facingX = c.dirX > 0 ? 1 : -1;
+      }
+      if (c.attackFlashSec <= 0) {
+        c.facingAngle = Math.atan2(c.dirY, c.dirX);
       }
       const slimeMul = this.faction.id === 'HIVE' && this.isOnSlime(c.x, c.y) ? 1.2 : 1;
       const speed = c.def.moveSpeed * this.speedMul * slimeMul;
@@ -314,6 +318,7 @@ export class SurvivorEngine {
 
   private updateCommanderAttack(dt: number): void {
     const c = this.commander;
+    c.attackFlashSec = Math.max(0, c.attackFlashSec - dt);
     c.cooldown -= dt;
     if (c.cooldown > 0) {
       return;
@@ -323,6 +328,9 @@ export class SurvivorEngine {
     if (!target) {
       return;
     }
+    c.facingAngle = Math.atan2(target.y - c.y, target.x - c.x);
+    c.facingX = target.x >= c.x ? 1 : -1;
+    c.attackFlashSec = 0.22;
     this.fireProjectileAt(c.x, c.y, target.x, target.y, a, a.damage, a.rangePx, this.faction.palette.accent);
     c.cooldown = a.cooldownSec;
   }
@@ -434,6 +442,7 @@ export class SurvivorEngine {
       const dx = goalX - m.x;
       const dy = goalY - m.y;
       const dist = Math.hypot(dx, dy);
+      m.moving = dist > 1.2 || c.moving;
       if (dist > 0.5) {
         const catchUp = dist > 40 ? 1.7 : 1;
         const maxSpeed = m.def.moveSpeed * this.speedMul * catchUp * (onSlime ? 1.2 : 1);
@@ -445,6 +454,11 @@ export class SurvivorEngine {
         if (Math.abs(dx) > 1) {
           m.facingX = dx > 0 ? 1 : -1;
         }
+        if (m.attackFlashSec <= 0 && dist > 1.5) {
+          m.facingAngle = Math.atan2(dy, dx);
+        }
+      } else if (m.attackFlashSec <= 0 && a.targeting === 'FACING') {
+        m.facingAngle = Math.atan2(c.dirY, c.dirX);
       }
 
       // 부대원끼리 겹침 해소
@@ -473,7 +487,7 @@ export class SurvivorEngine {
       const dmg = a.damage * unitLevelDamageMult(lvl) * (entrenched ? 1.35 : 1);
       if (this.performSquadAttack(m, a, dmg, range)) {
         m.cooldown = a.cooldownSec * unitLevelCooldownMult(lvl);
-        m.attackFlashSec = 0.12;
+        m.attackFlashSec = 0.22;
       }
     }
   }
@@ -488,13 +502,16 @@ export class SurvivorEngine {
           return false;
         }
         target.hp = Math.min(target.maxHp, target.hp + dmg);
+        m.facingAngle = Math.atan2(target.y - m.y, target.x - m.x);
         this.addEffect('HEAL', target.x, target.y, 0, 8, 0, 0.35, '#7cf2a0');
         return true;
       }
       case 'PULSE': {
-        if (!this.findNearestEnemy(m.x, m.y, range)) {
+        const nearest = this.findNearestEnemy(m.x, m.y, range);
+        if (!nearest) {
           return false;
         }
+        m.facingAngle = Math.atan2(nearest.y - m.y, nearest.x - m.x);
         this.damageEnemiesInRadius(m.x, m.y, range, dmg);
         this.addEffect('PULSE', m.x, m.y, 0, range, 0, 0.3, color);
         return true;
@@ -507,6 +524,7 @@ export class SurvivorEngine {
         this.damageEnemy(target, dmg);
         const ang = Math.atan2(target.y - m.y, target.x - m.x);
         m.facingX = target.x >= m.x ? 1 : -1;
+        m.facingAngle = ang;
         this.addEffect('SLASH', (m.x + target.x) / 2, (m.y + target.y) / 2, ang, 8, 0, 0.15, '#f4f4f4');
         return true;
       }
@@ -521,6 +539,7 @@ export class SurvivorEngine {
           return false;
         }
         m.facingX = aimX >= 0 ? 1 : -1;
+        m.facingAngle = Math.atan2(aimY, aimX);
         this.addEffect('CONE', m.x, m.y, Math.atan2(aimY, aimX), range, half, 0.2, color);
         return true;
       }
@@ -531,6 +550,7 @@ export class SurvivorEngine {
           return false;
         }
         m.facingX = aimX >= 0 ? 1 : -1;
+        m.facingAngle = Math.atan2(aimY, aimX);
         this.fireProjectileAt(m.x, m.y, m.x + aimX * range, m.y + aimY * range, a, dmg, range, color);
         return true;
       }
@@ -679,10 +699,12 @@ export class SurvivorEngine {
       scale: def.scale * (elite ? 1.4 : 1),
       contactCd: 0,
       hitFlashSec: 0,
+      attackFlashSec: 0,
       isElite: elite,
       isBoss: boss,
       alive: true,
       facingX: 1,
+      facingAngle: Math.PI / 2,
     };
     this.enemies.push(e);
     return e;
@@ -701,6 +723,7 @@ export class SurvivorEngine {
       }
       e.contactCd -= dt;
       e.hitFlashSec = Math.max(0, e.hitFlashSec - dt);
+      e.attackFlashSec = Math.max(0, e.attackFlashSec - dt);
 
       let dx = c.x - e.x;
       let dy = c.y - e.y;
@@ -720,6 +743,7 @@ export class SurvivorEngine {
       if (Math.abs(dx) > 0.1) {
         e.facingX = dx > 0 ? 1 : -1;
       }
+      e.facingAngle = Math.atan2(dy, dx);
 
       // 군집 분리 (반경 가중)
       const cand = this.hash.query(e.x, e.y, e.radius + 20, this.scratch2);
@@ -767,6 +791,8 @@ export class SurvivorEngine {
     if (e.contactCd <= 0) {
       this.damageAlly(a, e.damage);
       e.contactCd = e.def.contactCooldownSec;
+      e.attackFlashSec = 0.22;
+      e.facingAngle = Math.atan2(a.y - e.y, a.x - e.x);
     }
     if (d2 < minD * minD) {
       const d = Math.sqrt(d2) || 0.01;
@@ -1226,6 +1252,9 @@ export class SurvivorEngine {
       alive: true,
       sinceHitSec: 99,
       facingX: 1,
+      facingAngle: Math.PI / 2,
+      moving: false,
+      attackFlashSec: 0,
     };
   }
 }
