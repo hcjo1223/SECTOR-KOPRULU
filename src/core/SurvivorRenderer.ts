@@ -1,10 +1,18 @@
 import { CanvasSource, Container, Graphics, Sprite, Texture, TilingSprite } from 'pixi.js';
 import type { SurvivorEngine } from '../domain/survivor/SurvivorEngine';
-import type { FactionPalette, SpriteArchetype } from '../domain/survivor/types';
-import { renderSpritePixels } from './SurvivorSprites';
+import type { EffectState, FactionPalette, SpriteArchetype } from '../domain/survivor/types';
+import {
+  OUTLINE_RGB,
+  renderGemPixels,
+  renderGroundTilePixels,
+  renderSlimeTilePixels,
+  renderSpritePixels,
+} from './SurvivorSprites';
 
 export const VIRTUAL_WIDTH = 640;
 export const VIRTUAL_HEIGHT = 360;
+
+const OUTLINE_HEX = (OUTLINE_RGB[0] << 16) | (OUTLINE_RGB[1] << 8) | OUTLINE_RGB[2];
 
 const textureCache = new Map<string, Texture>();
 
@@ -21,56 +29,144 @@ function pixelsToCanvas(buf: { width: number; height: number; data: Uint8Clamped
   return canvas;
 }
 
-export function getSpriteTexture(archetype: SpriteArchetype, palette: FactionPalette): Texture {
-  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}`;
+export function getSpriteTexture(
+  archetype: SpriteArchetype,
+  palette: FactionPalette,
+  frame: number = 0
+): Texture {
+  const f = Math.abs(Math.round(frame)) % 2;
+  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${f}`;
   const hit = textureCache.get(key);
   if (hit) {
     return hit;
   }
-  const source = new CanvasSource({ resource: pixelsToCanvas(renderSpritePixels(archetype, palette)), scaleMode: 'nearest' });
+  const source = new CanvasSource({
+    resource: pixelsToCanvas(renderSpritePixels(archetype, palette, f)),
+    scaleMode: 'nearest',
+  });
   const tex = new Texture({ source });
   textureCache.set(key, tex);
   return tex;
 }
 
-export function getSpriteDataUrl(archetype: SpriteArchetype, palette: FactionPalette): string {
-  return pixelsToCanvas(renderSpritePixels(archetype, palette)).toDataURL();
+export function getSpriteDataUrl(
+  archetype: SpriteArchetype,
+  palette: FactionPalette,
+  frame: number = 0
+): string {
+  return pixelsToCanvas(renderSpritePixels(archetype, palette, frame)).toDataURL();
+}
+
+function getGemTexture(tier: 1 | 2 | 3, frame: number): Texture {
+  const f = Math.abs(Math.round(frame)) % 2;
+  const key = `GEM|${tier}|${f}`;
+  const hit = textureCache.get(key);
+  if (hit) {
+    return hit;
+  }
+  const source = new CanvasSource({
+    resource: pixelsToCanvas(renderGemPixels(tier, f)),
+    scaleMode: 'nearest',
+  });
+  const tex = new Texture({ source });
+  textureCache.set(key, tex);
+  return tex;
+}
+
+function getSlimeTexture(palette: FactionPalette, frame: number): Texture {
+  const f = Math.abs(Math.round(frame)) % 2;
+  const key = `SLIME|${palette.primary}|${palette.secondary}|${palette.accent}|${f}`;
+  const hit = textureCache.get(key);
+  if (hit) {
+    return hit;
+  }
+  const source = new CanvasSource({
+    resource: pixelsToCanvas(renderSlimeTilePixels(palette, f)),
+    scaleMode: 'nearest',
+  });
+  const tex = new Texture({ source });
+  textureCache.set(key, tex);
+  return tex;
 }
 
 function buildGroundTexture(): Texture {
-  const size = 64;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = '#11161f';
-    ctx.fillRect(0, 0, size, size);
-    // 결정적 잡티 패턴
-    let s = 1337;
-    const rnd = (): number => {
-      s = (s * 16807) % 2147483647;
-      return s / 2147483647;
-    };
-    for (let i = 0; i < 70; i += 1) {
-      const x = Math.floor(rnd() * size);
-      const y = Math.floor(rnd() * size);
-      ctx.fillStyle = rnd() < 0.5 ? '#161c27' : '#0d1118';
-      ctx.fillRect(x, y, 1 + Math.floor(rnd() * 2), 1);
-    }
-    for (let i = 0; i < 6; i += 1) {
-      ctx.fillStyle = '#1b2230';
-      ctx.fillRect(Math.floor(rnd() * size), Math.floor(rnd() * size), 2, 2);
-    }
-    ctx.fillStyle = '#141a24';
-    ctx.fillRect(0, 0, size, 1);
-    ctx.fillRect(0, 0, 1, size);
-  }
+  const canvas = pixelsToCanvas(renderGroundTilePixels());
   return new Texture({ source: new CanvasSource({ resource: canvas, scaleMode: 'nearest' }) });
 }
 
 function hexNum(hex: string): number {
   return parseInt(hex.replace('#', ''), 16);
+}
+
+/** 정수 격자에 맞춘 픽셀 원(Stepped Pixel Circle) 도트 렌더링 */
+function drawPixelCircle(
+  g: Graphics,
+  cx: number,
+  cy: number,
+  radius: number,
+  color: number,
+  alpha: number = 1,
+  pixelSize: number = 1,
+  stepStride: number = 1
+): void {
+  const r = Math.max(2, Math.round(radius));
+  const steps = Math.max(12, Math.min(64, Math.round((r * 2.2) / stepStride)));
+  const ix = Math.round(cx);
+  const iy = Math.round(cy);
+  for (let i = 0; i < steps; i += 1) {
+    const a = (i / steps) * Math.PI * 2;
+    const px = ix + Math.round(Math.cos(a) * r);
+    const py = iy + Math.round(Math.sin(a) * r);
+    g.rect(px, py, pixelSize, pixelSize).fill({ color, alpha });
+  }
+}
+
+/** 정수 격자에 맞춘 픽셀 선분(Bresenham Stepped Line) */
+function drawPixelLine(
+  g: Graphics,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  color: number,
+  alpha: number = 1,
+  pixelSize: number = 1,
+  everyN: number = 1
+): void {
+  const ix0 = Math.round(x0);
+  const iy0 = Math.round(y0);
+  const ix1 = Math.round(x1);
+  const iy1 = Math.round(y1);
+  const dx = ix1 - ix0;
+  const dy = iy1 - iy0;
+  const steps = Math.max(1, Math.max(Math.abs(dx), Math.abs(dy)));
+  for (let i = 0; i <= steps; i += everyN) {
+    const t = i / steps;
+    const px = Math.round(ix0 + dx * t);
+    const py = Math.round(iy0 + dy * t);
+    g.rect(px, py, pixelSize, pixelSize).fill({ color, alpha });
+  }
+}
+
+/** 1px 외곽선이 있는 5x5 픽셀 십자(+) / 별 아이콘 */
+function drawPixelCross(
+  g: Graphics,
+  cx: number,
+  cy: number,
+  fillCol: number,
+  coreCol: number,
+  alpha: number = 1
+): void {
+  const x = Math.round(cx);
+  const y = Math.round(cy);
+  // 암색 1px 외곽선 배경
+  g.rect(x - 1, y - 3, 3, 7).fill({ color: OUTLINE_HEX, alpha: alpha * 0.85 });
+  g.rect(x - 3, y - 1, 7, 3).fill({ color: OUTLINE_HEX, alpha: alpha * 0.85 });
+  // 십자 본체
+  g.rect(x, y - 2, 1, 5).fill({ color: fillCol, alpha });
+  g.rect(x - 2, y, 5, 1).fill({ color: fillCol, alpha });
+  // 중앙 하이라이트 코어
+  g.rect(x, y, 1, 1).fill({ color: coreCol, alpha });
 }
 
 interface PooledSprite {
@@ -79,31 +175,49 @@ interface PooledSprite {
 }
 
 /**
- * SurvivorEngine의 논리 상태를 읽어 그리기만 하는 렌더러.
- * - 지휘관 추종 카메라 + 무한 타일 지면
- * - 직전 틱 ↔ 현재 틱 좌표 보간(alpha)
- * - 엔티티 id 기반 스프라이트 풀
+ * SurvivorEngine의 논리 상태를 읽어 픽셀 아트로 그리는 렌더러.
+ * - 지휘관 추종 카메라 + 64x64 코프룰루 황무지/격자 심리스 픽셀 타일
+ * - 18x18 볼륨 디더링 2프레임 유닛·적 스프라이트
+ * - 픽셀 데칼 점액(Slime), 포진 전술 방어선(Entrench), 광휘 보호막(Lumen Shield)
+ * - 3티어 픽셀 광물 결정(XP Gem) + 픽셀 탄환·포탄·광선창 + 7종 픽셀 전투 이펙트
  */
 export class SurvivorRenderer {
   public readonly root = new Container();
   private readonly ground: TilingSprite;
   private readonly world = new Container();
+  private readonly slimeLayer = new Container();
   private readonly groundFx = new Graphics();
-  private readonly gemGfx = new Graphics();
+  private readonly gemLayer = new Container();
+  private readonly gemFx = new Graphics();
   private readonly unitLayer = new Container();
   private readonly projGfx = new Graphics();
   private readonly fxGfx = new Graphics();
   private readonly barGfx = new Graphics();
   private readonly sprites = new Map<number, PooledSprite>();
+  private readonly gemSprites = new Map<number, PooledSprite>();
+  private readonly slimePool: Sprite[] = [];
   private frame = 0;
   private timeSec = 0;
   private viewW = VIRTUAL_WIDTH;
   private viewH = VIRTUAL_HEIGHT;
 
   constructor() {
-    this.ground = new TilingSprite({ texture: buildGroundTexture(), width: VIRTUAL_WIDTH, height: VIRTUAL_HEIGHT });
+    this.ground = new TilingSprite({
+      texture: buildGroundTexture(),
+      width: VIRTUAL_WIDTH,
+      height: VIRTUAL_HEIGHT,
+    });
     this.unitLayer.sortableChildren = true;
-    this.world.addChild(this.groundFx, this.gemGfx, this.unitLayer, this.projGfx, this.fxGfx, this.barGfx);
+    this.world.addChild(
+      this.slimeLayer,
+      this.groundFx,
+      this.gemFx,
+      this.gemLayer,
+      this.unitLayer,
+      this.projGfx,
+      this.fxGfx,
+      this.barGfx
+    );
     this.root.addChild(this.ground, this.world);
   }
 
@@ -119,8 +233,15 @@ export class SurvivorRenderer {
       p.sprite.destroy();
     }
     this.sprites.clear();
+    for (const g of this.gemSprites.values()) {
+      g.sprite.destroy();
+    }
+    this.gemSprites.clear();
+    for (const s of this.slimePool) {
+      s.visible = false;
+    }
     this.groundFx.clear();
-    this.gemGfx.clear();
+    this.gemFx.clear();
     this.projGfx.clear();
     this.fxGfx.clear();
     this.barGfx.clear();
@@ -139,52 +260,224 @@ export class SurvivorRenderer {
     this.ground.tilePosition.set(ox, oy);
 
     const palette = engine.faction.palette;
+    const accentCol = hexNum(palette.accent);
+    const primaryCol = hexNum(palette.primary);
+    const animTick = Math.floor(this.timeSec * 6);
 
-    // ── 지면 이펙트: 점액, 포진 링, 지휘관 방향 표시
+    // ── 1. 적응 군체(HIVE) 점액 자취 픽셀 데칼 & 기포
     const gf = this.groundFx;
     gf.clear();
-    for (const s of engine.slime) {
-      const a = Math.min(1, s.lifeSec / 1.2) * 0.35;
-      gf.circle(Math.round(s.x), Math.round(s.y), 14).fill({ color: hexNum(palette.accent), alpha: a * 0.6 });
+    for (let i = 0; i < engine.slime.length; i += 1) {
+      const patch = engine.slime[i];
+      let sp = this.slimePool[i];
+      if (!sp) {
+        sp = new Sprite(getSlimeTexture(palette, 0));
+        sp.anchor.set(0.5, 0.5);
+        this.slimeLayer.addChild(sp);
+        this.slimePool.push(sp);
+      }
+      const slimeFrame = (animTick + i) % 2;
+      sp.texture = getSlimeTexture(palette, slimeFrame);
+      sp.visible = true;
+      sp.position.set(Math.round(patch.x), Math.round(patch.y));
+      sp.alpha = Math.min(1, patch.lifeSec / 1.2) * 0.82;
+
+      // 점막 위에서 피어오르는 산성 포자 픽셀 입자
+      if ((animTick + i * 3) % 4 === 0) {
+        const bx = Math.round(patch.x + Math.sin(i * 2.1 + this.timeSec * 3) * 7);
+        const by = Math.round(patch.y - 2 - ((this.timeSec * 10 + i * 3) % 6));
+        gf.rect(bx, by, 1, 1).fill({ color: 0xeaff90, alpha: sp.alpha });
+      }
     }
+    for (let i = engine.slime.length; i < this.slimePool.length; i += 1) {
+      this.slimePool[i].visible = false;
+    }
+
+    // ── 2. 철갑 연합(IRONCLAD) 포진(Entrench) 전술 방어선 & 성휘 교단(LUMEN) 보호막 오라
     if (engine.isEntrenched) {
-      const pulse = 0.25 + 0.1 * Math.sin(this.timeSec * 6);
-      gf.circle(Math.round(camX), Math.round(camY), 20 * engine.rings + 10).stroke({ width: 1, color: hexNum(palette.accent), alpha: pulse });
+      const perimR = 20 * engine.rings + 12;
+      const pulse = 0.45 + 0.18 * Math.sin(this.timeSec * 6);
+      drawPixelCircle(gf, camX, camY, perimR, accentCol, pulse, 1, 2);
+      drawPixelCircle(gf, camX, camY, 10, accentCol, pulse * 0.85, 1, 2);
+      // 4방향 전술 바리케이드 셰브론 파일런
+      const dirs = [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ];
+      for (const [dx, dy] of dirs) {
+        const px = Math.round(camX + dx * perimR);
+        const py = Math.round(camY + dy * perimR);
+        gf.rect(px - 2, py - 2, 5, 5).fill({ color: OUTLINE_HEX, alpha: 0.85 });
+        gf.rect(px - 1, py - 1, 3, 3).fill({ color: accentCol, alpha: 0.95 });
+        gf.rect(px, py, 1, 1).fill({ color: 0xffffff, alpha: 0.95 });
+      }
     }
-    // 바라보는 방향 화살표 (지휘관 방향형 부대원의 조준선)
+
+    if (engine.faction.id === 'LUMEN' && c.shield > 0) {
+      const regenActive = c.sinceHitSec >= 2.5;
+      const shieldAlpha = regenActive ? 0.55 + 0.2 * Math.sin(this.timeSec * 8) : 0.3;
+      drawPixelCircle(gf, camX, camY - 2, 10, 0x5fd8f0, shieldAlpha, 1, 2);
+      if (regenActive) {
+        for (let k = 0; k < 4; k += 1) {
+          const ang = this.timeSec * 3.5 + (k * Math.PI) / 2;
+          const mx = Math.round(camX + Math.cos(ang) * 10);
+          const my = Math.round(camY - 2 + Math.sin(ang) * 10);
+          gf.rect(mx, my, 2, 2).fill({ color: 0xe6ffff, alpha: 0.9 });
+        }
+      }
+    }
+
+    // ── 3. 지휘관 발밑 지휘 링 & 바라보는 방향 전술 조준선 (FACING 가이드)
+    const cx = Math.round(camX);
+    const cy = Math.round(camY);
+    // 지휘관 발밑 그림자 & 진영 오라 링
+    gf.rect(cx - 5, cy + 2, 10, 3).fill({ color: 0x04060a, alpha: 0.55 });
+    drawPixelCircle(gf, cx, cy + 1, 8, primaryCol, 0.55, 1, 2);
+
     const fx = c.dirX;
     const fy = c.dirY;
-    const tipX = camX + fx * 22;
-    const tipY = camY + fy * 22;
-    gf.moveTo(camX + fx * 12, camY + fy * 12).lineTo(tipX, tipY).stroke({ width: 1, color: 0xf2e27a, alpha: 0.7 });
-    gf.moveTo(tipX, tipY)
-      .lineTo(tipX - fx * 4 - fy * 3, tipY - fy * 4 + fx * 3)
-      .lineTo(tipX - fx * 4 + fy * 3, tipY - fy * 4 - fx * 3)
-      .closePath()
-      .fill({ color: 0xf2e27a, alpha: 0.8 });
+    const faceAngle = Math.atan2(fy, fx);
+    const hasFacingUnit = engine.squad.some((m) => m.def.attack.targeting === 'FACING');
+    if (hasFacingUnit) {
+      // 방향형 부대원 보유 시 전방 사격 원뿔 가이드 도트 표시
+      const guideHalf = (32 * Math.PI) / 180;
+      for (const sign of [-1, 1]) {
+        const ga = faceAngle + sign * guideHalf;
+        drawPixelLine(
+          gf,
+          cx + Math.cos(ga) * 14,
+          cy + Math.sin(ga) * 14,
+          cx + Math.cos(ga) * 34,
+          cy + Math.sin(ga) * 34,
+          accentCol,
+          0.32,
+          1,
+          4
+        );
+      }
+    }
 
-    // ── 경험치 결정
-    const gg = this.gemGfx;
-    gg.clear();
+    // 전방 조준 셰브론 레티클 (1px 외곽선 + 황금 픽셀 화살촉)
+    const tipX = Math.round(camX + fx * 24);
+    const tipY = Math.round(camY + fy * 24);
+    drawPixelLine(gf, camX + fx * 12, camY + fy * 12, tipX, tipY, 0xf2e27a, 0.75, 1, 2);
+    const wing1X = Math.round(tipX - fx * 4 - fy * 3);
+    const wing1Y = Math.round(tipY - fy * 4 + fx * 3);
+    const wing2X = Math.round(tipX - fx * 4 + fy * 3);
+    const wing2Y = Math.round(tipY - fy * 4 - fx * 3);
+    gf.rect(tipX - 1, tipY - 1, 3, 3).fill({ color: OUTLINE_HEX, alpha: 0.9 });
+    drawPixelLine(gf, wing1X, wing1Y, tipX, tipY, 0xf2e27a, 0.95, 2, 1);
+    drawPixelLine(gf, wing2X, wing2Y, tipX, tipY, 0xf2e27a, 0.95, 2, 1);
+    gf.rect(tipX, tipY, 1, 1).fill({ color: 0xffffff, alpha: 1 });
+
+    // ── 4. 경험치 결정 (3티어 픽셀 크리스탈 스프라이트 + 자석 끌림 잔상)
+    const gemFx = this.gemFx;
+    gemFx.clear();
     for (const g of engine.gems) {
-      const big = g.value >= 8;
-      const x = Math.round(g.x);
-      const y = Math.round(g.y);
-      const s = big ? 3 : 2;
-      gg.poly([x, y - s, x + s, y, x, y + s, x - s, y]).fill({ color: big ? 0xf2a65a : 0x5fd8f0 });
+      const tier: 1 | 2 | 3 = g.value >= 8 ? 3 : g.value >= 3 ? 2 : 1;
+      const gFrame = (animTick + g.id) % 2;
+      const gx = Math.round(g.x);
+      const gy = Math.round(g.y);
+      // 결정 바닥 그림자
+      gemFx.rect(gx - 2, gy + 3, 4, 1).fill({ color: 0x05070c, alpha: 0.5 });
+      if (g.magnetized) {
+        // 자석 흡입 시 반짝이는 픽셀 궤적
+        const dx = camX - gx;
+        const dy = camY - gy;
+        const d = Math.hypot(dx, dy) || 1;
+        const tx = Math.round(gx - (dx / d) * 4);
+        const ty = Math.round(gy - (dy / d) * 4);
+        gemFx.rect(tx, ty, 1, 1).fill({
+          color: tier === 3 ? 0xffe070 : tier === 2 ? 0x7cf2a0 : 0x8ef4ff,
+          alpha: 0.85,
+        });
+      }
+      this.placeGemSprite(g.id, getGemTexture(tier, gFrame), gx, gy);
+    }
+    for (const [id, p] of this.gemSprites) {
+      if (p.seenFrame !== this.frame) {
+        p.sprite.destroy();
+        this.gemSprites.delete(id);
+      }
     }
 
-    // ── 유닛 스프라이트
-    const bob = Math.sin(this.timeSec * 8) > 0 ? 1 : 0;
-    this.placeSprite(c.id, getSpriteTexture(c.def.sprite, palette), lerp(c.px, c.x), lerp(c.py, c.y), c.facingX, 1, bob, c.sinceHitSec < 0.12 ? 0xff7070 : 0xffffff);
+    // ── 5. 지휘관 · 부대원 · 블라이트 무리 2프레임 픽셀 스프라이트
+    const cmdMoving = c.idleSec === 0;
+    const cmdFrame = cmdMoving ? animTick % 2 : Math.floor(this.timeSec * 3) % 2;
+    const cmdBob = cmdMoving && animTick % 2 === 1 ? 1 : 0;
+    this.placeSprite(
+      c.id,
+      getSpriteTexture(c.def.sprite, palette, cmdFrame),
+      camX,
+      camY,
+      c.facingX,
+      1,
+      cmdBob,
+      c.sinceHitSec < 0.12 ? 0xff7070 : 0xffffff
+    );
+
     for (const m of engine.squad) {
+      const mx = lerp(m.px, m.x);
+      const my = lerp(m.py, m.y);
+      const imx = Math.round(mx);
+      const imy = Math.round(my);
+      // 부대원 발밑 그림자 & 성휘 보호막 링 / 철갑 포진 버프 마크
+      gf.rect(imx - 4, imy + 2, 8, 2).fill({ color: 0x04060a, alpha: 0.45 });
+      if (m.shield > 0) {
+        drawPixelCircle(gf, imx, imy - 2, 6, 0x5fd8f0, 0.25, 1, 3);
+      }
+      if (engine.isEntrenched && (animTick + m.id) % 2 === 0) {
+        gf.rect(imx + 5, imy - 8, 1, 2).fill({ color: accentCol, alpha: 0.85 });
+      }
+      const mFrame = m.attackFlashSec > 0 ? 1 : (animTick + m.id) % 2;
+      const mBob = m.attackFlashSec > 0 ? 0 : (animTick + m.id) % 2;
       const tint = m.sinceHitSec < 0.1 ? 0xff7070 : 0xffffff;
-      this.placeSprite(m.id, getSpriteTexture(m.def.sprite, palette), lerp(m.px, m.x), lerp(m.py, m.y), m.facingX, 1, m.attackFlashSec > 0 ? 0 : bob, tint);
+      this.placeSprite(
+        m.id,
+        getSpriteTexture(m.def.sprite, palette, mFrame),
+        mx,
+        my,
+        m.facingX,
+        1,
+        mBob,
+        tint
+      );
     }
+
     for (const e of engine.enemies) {
-      const tint = e.hitFlashSec > 0 ? 0xff9090 : e.isElite ? 0xffe0a0 : 0xffffff;
-      this.placeSprite(e.id, getSpriteTexture(e.def.sprite, e.def.palette), lerp(e.px, e.x), lerp(e.py, e.y), e.facingX, e.scale, 0, tint);
+      const ex = lerp(e.px, e.x);
+      const ey = lerp(e.py, e.y);
+      const iex = Math.round(ex);
+      const iey = Math.round(ey);
+      const sw = Math.round(7 * e.scale);
+      gf.rect(iex - Math.floor(sw / 2), iey + 2, sw, 2).fill({ color: 0x04060a, alpha: 0.5 });
+
+      if (e.isBoss) {
+        // 최종 보스 [블라이트 모체] 발밑 위협 오라 링
+        drawPixelCircle(gf, iex, iey - 2, 22, 0xff3858, 0.65, 2, 2);
+        drawPixelCircle(gf, iex, iey - 2, 18, 0xffd040, 0.45, 1, 2);
+      } else if (e.isElite) {
+        // 엘리트 개체 발밑 황금 픽셀 마커
+        drawPixelCircle(gf, iex, iey, Math.round(7 * e.scale), 0xffc840, 0.6, 1, 2);
+      }
+
+      const eFrame = (animTick + e.id) % 2;
+      const eBob = (animTick + e.id) % 2 === 1 ? 1 : 0;
+      const tint = e.hitFlashSec > 0 ? 0xff9090 : e.isElite ? 0xffe6a8 : 0xffffff;
+      this.placeSprite(
+        e.id,
+        getSpriteTexture(e.def.sprite, e.def.palette, eFrame),
+        ex,
+        ey,
+        e.facingX,
+        e.scale,
+        eBob,
+        tint
+      );
     }
+
     for (const [id, p] of this.sprites) {
       if (p.seenFrame !== this.frame) {
         p.sprite.destroy();
@@ -192,87 +485,343 @@ export class SurvivorRenderer {
       }
     }
 
-    // ── 투사체
+    // ── 6. 픽셀 투사체 (박격포탄 · 관통 광선창/가시 · 가우스/광자 탄환)
     const pg = this.projGfx;
     pg.clear();
     for (const p of engine.projectiles) {
-      const x = lerp(p.px, p.x);
-      const y = lerp(p.py, p.y);
+      const x = Math.round(lerp(p.px, p.x));
+      const y = Math.round(lerp(p.py, p.y));
       const col = hexNum(p.color);
-      if (p.pierceLeft > 0 || p.radius >= 3) {
-        const len = Math.hypot(p.vx, p.vy) || 1;
-        pg.moveTo(x - (p.vx / len) * 6, y - (p.vy / len) * 6).lineTo(x, y).stroke({ width: 2, color: col });
-      } else if (p.splashRadiusPx > 0) {
-        pg.circle(Math.round(x), Math.round(y), 2.5).fill({ color: 0xffb347 });
+      const len = Math.hypot(p.vx, p.vy) || 1;
+      const ux = p.vx / len;
+      const uy = p.vy / len;
+
+      if (p.splashRadiusPx > 0) {
+        // 박격 보행기 고폭 포탄: 5x5 외곽선 탄두 + 3단계 픽셀 연기 궤적
+        for (let s = 1; s <= 3; s += 1) {
+          const sx = Math.round(x - ux * s * 3.5);
+          const sy = Math.round(y - uy * s * 3.5);
+          const sc = s === 1 ? 0xff9838 : s === 2 ? 0x707c90 : 0x3e4656;
+          pg.rect(sx - 1, sy - 1, 2, 2).fill({ color: sc, alpha: 0.9 - s * 0.2 });
+        }
+        pg.rect(x - 2, y - 2, 5, 5).fill({ color: OUTLINE_HEX });
+        pg.rect(x - 1, y - 1, 3, 3).fill({ color: 0xe87820 });
+        pg.rect(x, y - 1, 2, 2).fill({ color: 0xffe068 });
+        pg.rect(x, y, 1, 1).fill({ color: 0xffffff });
+      } else if (p.pierceLeft > 0 || p.radius >= 3) {
+        // 광선 창병 프리즘 창 / 가시 투척충 관통 골침
+        const tailX = Math.round(x - ux * 9);
+        const tailY = Math.round(y - uy * 9);
+        drawPixelLine(pg, tailX, tailY, x, y, OUTLINE_HEX, 0.85, 3, 2);
+        drawPixelLine(pg, tailX, tailY, x, y, col, 0.95, 2, 1);
+        drawPixelLine(pg, Math.round(x - ux * 5), Math.round(y - uy * 5), x, y, 0xffffff, 1, 1, 1);
       } else {
-        pg.rect(Math.round(x) - 1, Math.round(y) - 1, 2, 2).fill({ color: col });
+        // 소총병 가우스 탄환 / 프리즘 광자탄 / 지휘관 사격
+        const tx = Math.round(x - ux * 5);
+        const ty = Math.round(y - uy * 5);
+        drawPixelLine(pg, tx, ty, x, y, col, 0.75, 1, 1);
+        pg.rect(x - 1, y - 1, 3, 3).fill({ color: OUTLINE_HEX });
+        pg.rect(x - 1, y - 1, 2, 2).fill({ color: col });
+        pg.rect(x, y, 1, 1).fill({ color: 0xffffff });
       }
     }
 
-    // ── 이펙트
+    // ── 7. 7종 픽셀 전투 이펙트 (CONE, BOOM, PULSE, SLASH, HEAL, DEATH, LEVEL)
     const eg = this.fxGfx;
     eg.clear();
+    const isHive = engine.faction.id === 'HIVE';
     for (const f of engine.effects) {
-      const t = f.lifeSec / f.maxLifeSec;
-      const col = hexNum(f.color);
-      switch (f.kind) {
-        case 'CONE': {
-          eg.moveTo(f.x, f.y).arc(f.x, f.y, f.radius, f.angle - f.halfAngle, f.angle + f.halfAngle).closePath().fill({ color: col, alpha: 0.35 * t });
-          break;
-        }
-        case 'PULSE':
-          eg.circle(f.x, f.y, f.radius * (1.1 - t * 0.4)).stroke({ width: 2, color: col, alpha: t });
-          break;
-        case 'BOOM':
-          eg.circle(f.x, f.y, f.radius * (1 - t * 0.5)).fill({ color: 0xff8c3a, alpha: 0.4 * t });
-          eg.circle(f.x, f.y, f.radius * 0.5 * (1 - t * 0.5)).fill({ color: 0xffe08a, alpha: 0.6 * t });
-          break;
-        case 'SLASH': {
-          const dx = Math.cos(f.angle + Math.PI / 2) * f.radius;
-          const dy = Math.sin(f.angle + Math.PI / 2) * f.radius;
-          eg.moveTo(f.x - dx, f.y - dy).lineTo(f.x + dx, f.y + dy).stroke({ width: 1.5, color: col, alpha: t });
-          break;
-        }
-        case 'HEAL':
-          eg.rect(Math.round(f.x) - 1, Math.round(f.y) - 6 - (1 - t) * 6, 2, 5).fill({ color: col, alpha: t });
-          eg.rect(Math.round(f.x) - 3, Math.round(f.y) - 4 - (1 - t) * 6, 6, 1).fill({ color: col, alpha: t });
-          break;
-        case 'DEATH':
-          for (let k = 0; k < 4; k += 1) {
-            const a = (k / 4) * Math.PI * 2 + 0.6;
-            const r = f.radius * (1 - t);
-            eg.rect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r), 2, 2).fill({ color: col, alpha: t });
-          }
-          break;
-        case 'LEVEL':
-          eg.circle(f.x, f.y, f.radius * (1.2 - t)).stroke({ width: 2, color: col, alpha: t });
-          break;
-      }
+      this.renderPixelEffect(eg, f, isHive);
     }
 
-    // ── 체력바 (지휘관·부대원·엘리트·보스)
+    // ── 8. 픽셀 체력바 & 보호막바 (지휘관 · 부대원 · 엘리트 · 보스)
     const bg = this.barGfx;
     bg.clear();
-    const bar = (x: number, y: number, w: number, ratio: number, color: number, shieldRatio = 0): void => {
+    const bar = (
+      x: number,
+      y: number,
+      w: number,
+      ratio: number,
+      color: number,
+      shieldRatio = 0
+    ): void => {
       const bx = Math.round(x - w / 2);
       const by = Math.round(y);
-      bg.rect(bx - 1, by - 1, w + 2, 4).fill({ color: 0x05070b });
-      bg.rect(bx, by, Math.max(0, Math.round(w * ratio)), 2).fill({ color });
-      if (shieldRatio > 0) {
-        bg.rect(bx, by + 2, Math.max(0, Math.round(w * shieldRatio)), 1).fill({ color: 0x7fe3ff });
+      const hasShield = shieldRatio > 0;
+      const bh = hasShield ? 5 : 4;
+      bg.rect(bx - 1, by - 1, w + 2, bh).fill({ color: OUTLINE_HEX });
+      bg.rect(bx, by, w, 2).fill({ color: 0x161d2a });
+      const fillW = Math.max(0, Math.min(w, Math.round(w * ratio)));
+      if (fillW > 0) {
+        bg.rect(bx, by, fillW, 2).fill({ color });
+        bg.rect(bx, by, fillW, 1).fill({ color: 0xd8ffe4, alpha: 0.35 });
+      }
+      if (hasShield) {
+        const sW = Math.max(0, Math.min(w, Math.round(w * shieldRatio)));
+        bg.rect(bx, by + 2, w, 1).fill({ color: 0x102230 });
+        if (sW > 0) {
+          bg.rect(bx, by + 2, sW, 1).fill({ color: 0x6eeeff });
+        }
       }
     };
-    bar(camX, camY - 11, 14, c.hp / c.maxHp, 0x5ee37a, c.maxShield > 0 ? c.shield / c.maxShield : 0);
+
+    bar(
+      camX,
+      camY - 14,
+      16,
+      c.hp / c.maxHp,
+      0x5ee37a,
+      c.maxShield > 0 ? c.shield / c.maxShield : 0
+    );
     for (const m of engine.squad) {
       if (m.hp < m.maxHp || (m.maxShield > 0 && m.shield < m.maxShield)) {
-        bar(lerp(m.px, m.x), lerp(m.py, m.y) - 9, 10, m.hp / m.maxHp, 0x9be37a, m.maxShield > 0 ? m.shield / m.maxShield : 0);
+        bar(
+          lerp(m.px, m.x),
+          lerp(m.py, m.y) - 12,
+          12,
+          m.hp / m.maxHp,
+          0x9be37a,
+          m.maxShield > 0 ? m.shield / m.maxShield : 0
+        );
       }
     }
     for (const e of engine.enemies) {
-      if (e.isElite) {
-        bar(lerp(e.px, e.x), lerp(e.py, e.y) - 6 * e.scale - 4, 14, e.hp / e.maxHp, 0xf05a5a);
+      if (e.isBoss) {
+        bar(lerp(e.px, e.x), lerp(e.py, e.y) - 10 * e.scale - 6, 26, e.hp / e.maxHp, 0xff3858);
+      } else if (e.isElite) {
+        bar(lerp(e.px, e.x), lerp(e.py, e.y) - 8 * e.scale - 4, 14, e.hp / e.maxHp, 0xf05a5a);
       }
     }
+  }
+
+  /**
+   * 7종 전투 이펙트를 픽셀 블록/도트 파티클로 렌더링한다.
+   */
+  private renderPixelEffect(eg: Graphics, f: EffectState, isHive: boolean): void {
+    const t = Math.max(0, Math.min(1, f.lifeSec / Math.max(0.001, f.maxLifeSec)));
+    const p = 1 - t; // 진행률 0 -> 1
+    const col = hexNum(f.color);
+    const fx = Math.round(f.x);
+    const fy = Math.round(f.y);
+
+    switch (f.kind) {
+      case 'CONE': {
+        // 화염 방사병(화염 스트림) vs 산성 분사체(맹독 산성 분무) 픽셀 클러스터
+        const clusters = 16;
+        for (let i = 0; i < clusters; i += 1) {
+          const lane = (i / (clusters - 1)) * 2 - 1; // -1..1
+          const jitter = Math.sin(i * 4.7) * 0.18;
+          const ang = f.angle + (lane + jitter) * f.halfAngle * 0.92;
+          const distNorm = Math.min(1, ((i % 4) / 3) * 0.65 + p * 0.55 + 0.12);
+          const dist = distNorm * f.radius;
+          const px = Math.round(fx + Math.cos(ang) * dist);
+          const py = Math.round(fy + Math.sin(ang) * dist);
+
+          let cMain: number;
+          let cCore: number;
+          if (isHive) {
+            // 산성 분사체: 네온 라임 -> 부식성 녹색 -> 보랏빛 독성 거품
+            cMain = distNorm < 0.4 ? 0xd8ff68 : distNorm < 0.75 ? 0x88d830 : 0x489020;
+            cCore = distNorm < 0.5 ? 0xf6ffd0 : 0xb8e04a;
+          } else {
+            // 화염 방사병: 백열 코어 -> 황금 화염 -> 주황/진홍 불길 -> 검붉은 연기
+            cMain =
+              distNorm < 0.35
+                ? 0xffe058
+                : distNorm < 0.7
+                  ? 0xff7418
+                  : distNorm < 0.9
+                    ? 0xd02818
+                    : 0x382428;
+            cCore = distNorm < 0.45 ? 0xffffff : 0xffb830;
+          }
+          const bSize = distNorm > 0.45 && distNorm < 0.85 ? 3 : 2;
+          eg.rect(px - 1, py - 1, bSize + 1, bSize + 1).fill({
+            color: OUTLINE_HEX,
+            alpha: t * 0.45,
+          });
+          eg.rect(px, py, bSize, bSize).fill({ color: cMain, alpha: t * 0.92 });
+          if (i % 2 === 0) {
+            eg.rect(px, py, 1, 1).fill({ color: cCore, alpha: t });
+          }
+        }
+        // 원뿔 선단 픽셀 충격파 아크
+        const frontR = Math.round(f.radius * (0.55 + p * 0.45));
+        const arcSteps = 9;
+        for (let k = 0; k <= arcSteps; k += 1) {
+          const a = f.angle - f.halfAngle + (k / arcSteps) * (f.halfAngle * 2);
+          const ax = Math.round(fx + Math.cos(a) * frontR);
+          const ay = Math.round(fy + Math.sin(a) * frontR);
+          eg.rect(ax, ay, 2, 2).fill({
+            color: isHive ? 0xd8ff70 : 0xffae38,
+            alpha: t * 0.85,
+          });
+        }
+        break;
+      }
+
+      case 'BOOM': {
+        // 박격포 고폭 스플래시: 다단계 16비트 픽셀 폭발 (섬광 코어 + 화구 클러스터 + 파편 + 충격파 링)
+        const ringR = Math.round(f.radius * (0.35 + p * 0.65));
+        drawPixelCircle(eg, fx, fy, ringR, 0xff7820, t * 0.85, 2, 2);
+        drawPixelCircle(eg, fx, fy, Math.round(ringR * 0.7), 0xffe068, t * 0.9, 2, 2);
+
+        // 8방향 픽셀 화구 블록
+        for (let k = 0; k < 8; k += 1) {
+          const a = (k / 8) * Math.PI * 2 + 0.3;
+          const r = f.radius * (0.2 + ((k % 2) * 0.22 + p * 0.45));
+          const bx = Math.round(fx + Math.cos(a) * r);
+          const by = Math.round(fy + Math.sin(a) * r);
+          const fireCol = t > 0.65 ? 0xfff090 : t > 0.35 ? 0xff6818 : 0x482628;
+          eg.rect(bx - 2, by - 2, 5, 5).fill({ color: OUTLINE_HEX, alpha: t * 0.7 });
+          eg.rect(bx - 1, by - 1, 3, 3).fill({ color: fireCol, alpha: t * 0.95 });
+          if (t > 0.4) {
+            eg.rect(bx, by, 1, 1).fill({ color: 0xffffff, alpha: t });
+          }
+        }
+        // 중심 섬광 십자
+        if (t > 0.5) {
+          eg.rect(fx - 3, fy - 1, 7, 3).fill({ color: 0xffe878, alpha: t });
+          eg.rect(fx - 1, fy - 3, 3, 7).fill({ color: 0xffe878, alpha: t });
+          eg.rect(fx - 1, fy - 1, 3, 3).fill({ color: 0xffffff, alpha: t });
+        }
+        break;
+      }
+
+      case 'PULSE': {
+        // 공명 구체 사이오닉 파동: 2중 동심 픽셀 링 + 8방향 공명 다이아몬드 노드
+        const rOuter = Math.max(4, Math.round(f.radius * (0.4 + p * 0.65)));
+        const rInner = Math.max(2, Math.round(rOuter * 0.62));
+        drawPixelCircle(eg, fx, fy, rOuter, col, t * 0.95, 2, 2);
+        drawPixelCircle(eg, fx, fy, rInner, 0xffffff, t * 0.8, 1, 2);
+        for (let k = 0; k < 8; k += 1) {
+          const a = (k / 8) * Math.PI * 2 + p * 0.8;
+          const nx = Math.round(fx + Math.cos(a) * rOuter);
+          const ny = Math.round(fy + Math.sin(a) * rOuter);
+          eg.rect(nx - 1, ny - 1, 3, 3).fill({ color: OUTLINE_HEX, alpha: t * 0.75 });
+          eg.rect(nx, ny, 1, 1).fill({ color: 0xffffff, alpha: t });
+        }
+        break;
+      }
+
+      case 'SLASH': {
+        // 근접 참격 (갈퀴충 발톱 / 수호 기사 광휘검): 초승달 픽셀 검기 아크 + 타격 스파크
+        const steps = 9;
+        const span = Math.max(7, f.radius * 1.25);
+        const dirX = Math.cos(f.angle);
+        const dirY = Math.sin(f.angle);
+        const perpX = -dirY;
+        const perpY = dirX;
+
+        for (let i = 0; i <= steps; i += 1) {
+          const u = (i / steps) * 2 - 1; // -1..1
+          const curve = (1 - u * u) * 4.5;
+          const sx = Math.round(fx + perpX * u * span + dirX * curve);
+          const sy = Math.round(fy + perpY * u * span + dirY * curve);
+          const thick = Math.abs(u) < 0.55 ? 2 : 1;
+          eg.rect(sx - 1, sy - 1, thick + 1, thick + 1).fill({
+            color: OUTLINE_HEX,
+            alpha: t * 0.8,
+          });
+          eg.rect(sx, sy, thick, thick).fill({
+            color: isHive ? 0xb8e04a : 0x6eeeff,
+            alpha: t,
+          });
+          eg.rect(Math.round(sx + dirX), Math.round(sy + dirY), 1, 1).fill({
+            color: 0xffffff,
+            alpha: t,
+          });
+        }
+        // 타격 스파크 픽셀 4개
+        for (let k = -1; k <= 2; k += 1) {
+          const spA = f.angle + k * 0.45;
+          const spR = 3 + p * 7;
+          eg.rect(
+            Math.round(fx + Math.cos(spA) * spR),
+            Math.round(fy + Math.sin(spA) * spR),
+            1,
+            1
+          ).fill({ color: 0xffffff, alpha: t });
+        }
+        break;
+      }
+
+      case 'HEAL': {
+        // 수리 드론 나노 회복: 에메랄드 픽셀 링 + 상승하는 3개의 픽셀 의무 십자(+)
+        drawPixelCircle(eg, fx, fy, Math.round(6 + p * 4), 0x42e88c, t * 0.65, 1, 2);
+        const offsets: readonly [number, number][] = [
+          [0, -5 - p * 8],
+          [-5, -2 - p * 6],
+          [5, -3 - p * 7],
+        ];
+        for (let i = 0; i < offsets.length; i += 1) {
+          const [ox, oy] = offsets[i];
+          if (i === 0 || t > 0.35) {
+            drawPixelCross(eg, fx + ox, fy + oy, col, 0xffffff, t);
+          }
+        }
+        break;
+      }
+
+      case 'DEATH': {
+        // 적·부대원 처치 파편 폭발: 중심 타격 플래시 + 8방향 포물선 픽셀 파편
+        if (t > 0.72) {
+          eg.rect(fx - 3, fy - 3, 6, 6).fill({ color: 0xffffff, alpha: t });
+        }
+        const grav = p * p * 5;
+        for (let k = 0; k < 8; k += 1) {
+          const a = (k / 8) * Math.PI * 2 + 0.4;
+          const r = (0.2 + p * 0.95) * f.radius * (k % 2 === 0 ? 1.15 : 0.8);
+          const dx = Math.round(fx + Math.cos(a) * r);
+          const dy = Math.round(fy + Math.sin(a) * r + grav);
+          const sz = k % 2 === 0 ? 2 : 1;
+          eg.rect(dx - 1, dy - 1, sz + 1, sz + 1).fill({ color: OUTLINE_HEX, alpha: t * 0.85 });
+          eg.rect(dx, dy, sz, sz).fill({ color: col, alpha: t });
+          if (k % 3 === 0) {
+            eg.rect(dx, dy, 1, 1).fill({ color: 0xffe8a0, alpha: t });
+          }
+        }
+        break;
+      }
+
+      case 'LEVEL': {
+        // 레벨업 팡파르: 수직 황금 픽셀 빛기둥 + 8방위 확장 픽셀 스타 링
+        const ringR = Math.round(f.radius * (0.25 + p * 0.85));
+        if (t > 0.35) {
+          const beamW = Math.max(2, Math.round(8 * t));
+          eg.rect(Math.round(fx - beamW / 2), fy - 28, beamW, 30).fill({
+            color: col,
+            alpha: t * 0.35,
+          });
+          eg.rect(fx - 1, fy - 28, 2, 30).fill({ color: 0xffffff, alpha: t * 0.7 });
+        }
+        drawPixelCircle(eg, fx, fy, ringR, col, t * 0.9, 2, 2);
+        for (let k = 0; k < 8; k += 1) {
+          const a = (k / 8) * Math.PI * 2 + p * 0.6;
+          const sx = Math.round(fx + Math.cos(a) * ringR);
+          const sy = Math.round(fy + Math.sin(a) * ringR);
+          drawPixelCross(eg, sx, sy, col, 0xffffff, t);
+        }
+        break;
+      }
+    }
+  }
+
+  private placeGemSprite(id: number, tex: Texture, x: number, y: number): void {
+    let p = this.gemSprites.get(id);
+    if (!p) {
+      const sprite = new Sprite(tex);
+      sprite.anchor.set(0.5, 0.5);
+      this.gemLayer.addChild(sprite);
+      p = { sprite, seenFrame: this.frame };
+      this.gemSprites.set(id, p);
+    }
+    p.seenFrame = this.frame;
+    const s = p.sprite;
+    if (s.texture !== tex) {
+      s.texture = tex;
+    }
+    s.position.set(x, y);
   }
 
   private placeSprite(
@@ -288,7 +837,7 @@ export class SurvivorRenderer {
     let p = this.sprites.get(id);
     if (!p) {
       const sprite = new Sprite(tex);
-      sprite.anchor.set(0.5, 0.75);
+      sprite.anchor.set(0.5, 0.78);
       this.unitLayer.addChild(sprite);
       p = { sprite, seenFrame: this.frame };
       this.sprites.set(id, p);

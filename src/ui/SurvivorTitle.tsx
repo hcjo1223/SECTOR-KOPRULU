@@ -1,20 +1,21 @@
 import React from 'react';
 import { getSpriteDataUrl } from '../core/SurvivorRenderer';
-import { getFactions, getSquadUnitDef } from '../domain/survivor/SurvivorCatalog';
+import { getAllEnemies, getFactions, getSquadUnitDef } from '../domain/survivor/SurvivorCatalog';
 import { useSurvivorStore } from '../store/useSurvivorStore';
 import { STYLE_LABEL, TARGETING_LABEL } from './survivorLabels';
 
 export const SurvivorTitle: React.FC = () => {
   const startRun = useSurvivorStore((s) => s.startRun);
+  const enemies = getAllEnemies();
   return (
-    <div className="absolute inset-0 z-20 flex flex-col items-center overflow-y-auto bg-[#070b12]/95 px-4 py-6">
-      <div className="mb-4 text-center">
+    <div className="absolute inset-0 z-20 flex flex-col items-center overflow-y-auto bg-[#070b12]/95 px-4 py-5">
+      <div className="mb-3 text-center">
         <div className="font-mono-tech text-[10px] tracking-[0.22em] text-sky-400/90 uppercase">Squad Horde Survival</div>
         <h1 className="font-pixel text-2xl tracking-wider text-slate-100 sm:text-4xl">SECTOR: KOPRULU</h1>
-        <p className="mt-1.5 text-xs text-slate-400 sm:text-sm">
+        <p className="mt-1 text-xs text-slate-400 sm:text-sm">
           지휘관을 움직여 부대를 이끌고, 몰려오는 블라이트 무리 속에서 10분을 버텨 모체를 처치하라.
         </p>
-        <p className="mt-1 font-mono-tech text-[10px] text-slate-500">WASD / 방향키 이동 · Space 일시정지 · 모바일: 드래그 조이스틱</p>
+        <p className="mt-0.5 font-mono-tech text-[10px] text-slate-500">WASD / 방향키 이동 · Space 일시정지 · 모바일: 드래그 조이스틱</p>
       </div>
       <div className="grid w-full max-w-5xl grid-cols-1 gap-3 lg:grid-cols-3">
         {getFactions().map((f) => (
@@ -55,6 +56,27 @@ export const SurvivorTitle: React.FC = () => {
           </div>
         ))}
       </div>
+
+      <div className="mt-3 flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 rounded border border-rose-900/50 bg-slate-950/85 px-3 py-2">
+        <div className="font-mono-tech text-[10px] tracking-wider text-rose-400 uppercase">
+          위협 개체 · 블라이트 무리 (BLIGHT HORDE)
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {enemies.map((e) => (
+            <div key={e.id} className="flex items-center gap-1.5">
+              <img
+                src={getSpriteDataUrl(e.sprite, e.palette)}
+                alt={e.name}
+                className="pixelated h-7 w-7"
+              />
+              <span className="font-mono-tech text-[10px] text-slate-300">
+                {e.name}
+                {e.id === 'matron' && <span className="ml-1 text-rose-400">[BOSS]</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };
@@ -65,3 +87,4 @@ const UnitChip: React.FC<{ src: string; label: string }> = ({ src, label }) => (
     <span className="mt-0.5 w-full truncate text-center text-[8px] text-slate-400">{label}</span>
   </div>
 );
+
