@@ -2,7 +2,9 @@ import React, { useEffect, useRef } from 'react';
 import { GameApp } from './core/GameApp';
 import { useGameStore } from './store/useGameStore';
 import { BattleHUD } from './ui/BattleHUD';
+import { CodexModal } from './ui/CodexModal';
 import { PrepOverlay } from './ui/PrepOverlay';
+import { TacticalMapModal } from './ui/TacticalMapModal';
 import { TitleScreen } from './ui/TitleScreen';
 
 export const App: React.FC = () => {
@@ -35,6 +37,8 @@ export const App: React.FC = () => {
         {phase === 'TITLE' && <TitleScreen />}
         {phase === 'PREP' && <PrepOverlay gameAppRef={gameAppRef} />}
         {phase === 'BATTLE' && <BattleHUD />}
+        <TacticalMapModal />
+        <CodexModal />
       </div>
     </main>
   );

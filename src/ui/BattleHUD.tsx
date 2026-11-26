@@ -1,4 +1,7 @@
 import React from 'react';
+import { AssetLoader } from '../core/AssetLoader';
+import { getRelicChoicesForRace } from '../domain/roguelike/RunGenerator';
+import { getUnitDefinition } from '../domain/UnitCatalog';
 import type { GameSpeed } from '../domain/types';
 import {
   getCommanderSkillForRace,
@@ -12,9 +15,12 @@ export const BattleHUD: React.FC = () => {
   const speed = useGameStore((s) => s.speed);
   const battleSnapshot = useGameStore((s) => s.battleSnapshot);
   const statusBanner = useGameStore((s) => s.statusBanner);
+  const draftOffers = useGameStore((s) => s.draftOffers);
+  const relics = useGameStore((s) => s.relics);
 
   const setSpeed = useGameStore((s) => s.setSpeed);
   const triggerCommanderSkill = useGameStore((s) => s.triggerCommanderSkill);
+  const claimVictoryReward = useGameStore((s) => s.claimVictoryReward);
   const returnToPrep = useGameStore((s) => s.returnToPrep);
 
   if (!battleSnapshot) {
@@ -46,6 +52,11 @@ export const BattleHUD: React.FC = () => {
       : battleSnapshot.mode === 'DEFENSE'
         ? '거점 버티기 (DEFENSE)'
         : '적진 돌파 (BREAKTHROUGH)';
+
+  const relicChoices = getRelicChoicesForRace(
+    selectedRace,
+    relics.map((r) => r.id)
+  );
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-2.5 sm:p-3">
@@ -93,7 +104,7 @@ export const BattleHUD: React.FC = () => {
         </div>
       </div>
 
-      {/* Center Status Banner & Outcome Modal */}
+      {/* Center Status Banner & Outcome / Reward Modal */}
       <div className="relative flex flex-1 items-center justify-center">
         {statusBanner && battleSnapshot.outcome === 'ONGOING' && (
           <div className="pointer-events-none absolute top-1 left-1/2 -translate-x-1/2 rounded border border-slate-700/80 bg-slate-950/85 px-3 py-0.5 font-mono-tech text-[11px] text-amber-300">
@@ -104,7 +115,7 @@ export const BattleHUD: React.FC = () => {
         {battleSnapshot.outcome !== 'ONGOING' && (
           <div
             data-testid="battle-outcome-modal"
-            className="pointer-events-auto flex w-80 flex-col items-center rounded border border-slate-600 bg-[#0b111c]/96 p-5 text-center shadow-2xl backdrop-blur-sm"
+            className="pointer-events-auto flex w-full max-w-md flex-col items-center rounded border border-slate-600 bg-[#0b111c]/96 p-5 text-center shadow-2xl backdrop-blur-sm"
           >
             <div
               className={`font-pixel text-2xl tracking-wider ${
@@ -115,22 +126,66 @@ export const BattleHUD: React.FC = () => {
             >
               {battleSnapshot.outcome === 'VICTORY' ? 'VICTORY!' : 'DEFEAT'}
             </div>
-            <p className="mt-2 font-mono-tech text-xs text-slate-300">
+            <p className="mt-1.5 font-mono-tech text-xs text-slate-300">
               교전 시간: {battleSnapshot.elapsedSec.toFixed(1)}초 · 생존 아군:{' '}
               {aliveAllies}기
             </p>
             {selectedRace === 'PROTOSS' && (
               <p className="mt-1 text-[11px] text-sky-300">
-                [프로토스 특성] 전투 종료 후 모든 아군 플라즈마 실드 100% 회복
+                [프로토스 특성] 전투 종료 후 모든 아군 플라즈마 실드 100% 자동 회복
               </p>
             )}
+
+            {battleSnapshot.outcome === 'VICTORY' && (
+              <div className="mt-3 w-full border-t border-slate-800 pt-3 text-left">
+                <div className="mb-1.5 font-mono-tech text-[11px] text-amber-300">
+                  전투 승리 보상 — 신규 병력 드래프트(3택 1) 또는 유물 선택
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {draftOffers.map((unitId, idx) => {
+                    const def = getUnitDefinition(unitId);
+                    if (!def) return null;
+                    return (
+                      <button
+                        key={`${unitId}_reward_${idx}`}
+                        type="button"
+                        data-testid={`reward-unit-${idx}`}
+                        onClick={() =>
+                          claimVictoryReward(unitId, relicChoices[0]?.id)
+                        }
+                        className="flex cursor-pointer flex-col items-center rounded border border-slate-700 bg-slate-900 p-2 hover:border-amber-400"
+                      >
+                        <img
+                          src={AssetLoader.getUnitDataUrl(def, 1, 0)}
+                          alt={def.name}
+                          className="pixelated h-9 w-9 object-contain"
+                        />
+                        <span className="mt-1 truncate text-[11px] font-medium text-slate-200">
+                          {def.name.split(' (')[0]}
+                        </span>
+                        <span className="font-mono-tech text-[9px] text-sky-300">
+                          +무료 영입
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <button
               type="button"
               data-testid="return-prep-btn"
-              onClick={returnToPrep}
+              onClick={() =>
+                battleSnapshot.outcome === 'VICTORY'
+                  ? claimVictoryReward(undefined, relicChoices[0]?.id)
+                  : returnToPrep()
+              }
               className="mt-4 w-full cursor-pointer rounded bg-sky-600 px-4 py-2 font-mono-tech text-xs font-semibold text-white hover:bg-sky-500"
             >
-              전술 정비 페이즈로 복귀
+              {battleSnapshot.outcome === 'VICTORY'
+                ? '광물·유물 보상만 수령하고 다음 구역으로 진격'
+                : '전술 정비 페이즈로 복귀'}
             </button>
           </div>
         )}

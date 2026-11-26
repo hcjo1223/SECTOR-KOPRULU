@@ -53,19 +53,30 @@ const RACE_OPTIONS: readonly RaceOption[] = [
 
 export const TitleScreen: React.FC = () => {
   const startGame = useGameStore((s) => s.startGame);
+  const setCodexOpen = useGameStore((s) => s.setCodexOpen);
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#070b12]/95 px-6 py-5">
-      <div className="mb-5 text-center">
+      <div className="mb-4 text-center">
         <div className="font-mono-tech text-[11px] tracking-[0.28em] text-sky-400/90 uppercase mb-1">
-          MILESTONE 1 · HANDCRAFTED PIXEL ART EDITION
+          SECTOR: KOPRULU · TACTICAL GRID AUTO-BATTLER ROGUELIKE
         </div>
         <h1 className="font-pixel text-3xl sm:text-4xl tracking-wider text-slate-100">
           SECTOR: KOPRULU
         </h1>
         <p className="mt-1.5 text-xs sm:text-sm text-slate-400">
-          3종족 18종 픽셀 유닛이 적용된 비대칭 전술 그리드 오토배틀러
+          3종족 18종 픽셀 유닛 · 가변 그리드(3x3→4x4→5x5) · 로그라이크 전술 캠페인
         </p>
+        <div className="mt-2.5 flex items-center justify-center gap-2">
+          <button
+            type="button"
+            data-testid="title-codex-btn"
+            onClick={() => setCodexOpen(true)}
+            className="cursor-pointer rounded border border-slate-700 bg-slate-900/90 px-3 py-1 font-mono-tech text-xs text-amber-300 hover:border-amber-500/60 hover:bg-slate-800"
+          >
+            📖 병영 / 전술 도감 확인
+          </button>
+        </div>
       </div>
 
       <div className="grid w-full max-w-5xl grid-cols-1 gap-3.5 sm:grid-cols-3">

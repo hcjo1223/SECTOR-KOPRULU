@@ -27,6 +27,8 @@ const SPEEDS: readonly GameSpeed[] = [1, 2, 4];
 
 export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
   const selectedRace = useGameStore((s) => s.selectedRace);
+  const act = useGameStore((s) => s.act);
+  const minerals = useGameStore((s) => s.minerals);
   const gridSize = useGameStore((s) => s.gridSize);
   const stageMode = useGameStore((s) => s.stageMode);
   const speed = useGameStore((s) => s.speed);
@@ -36,15 +38,22 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
   const dragPayload = useGameStore((s) => s.dragPayload);
   const statusBanner = useGameStore((s) => s.statusBanner);
   const synergySummary = useGameStore((s) => s.synergySummary);
+  const draftOffers = useGameStore((s) => s.draftOffers);
+  const relics = useGameStore((s) => s.relics);
 
   const startGame = useGameStore((s) => s.startGame);
   const returnToTitle = useGameStore((s) => s.returnToTitle);
   const setGridSize = useGameStore((s) => s.setGridSize);
   const setStageMode = useGameStore((s) => s.setStageMode);
   const setSpeed = useGameStore((s) => s.setSpeed);
+  const setMapOpen = useGameStore((s) => s.setMapOpen);
+  const setCodexOpen = useGameStore((s) => s.setCodexOpen);
   const selectRosterUnit = useGameStore((s) => s.selectRosterUnit);
   const setDragPayload = useGameStore((s) => s.setDragPayload);
   const quickDeployFromRoster = useGameStore((s) => s.quickDeployFromRoster);
+  const draftFromShop = useGameStore((s) => s.draftFromShop);
+  const rerollDraftShop = useGameStore((s) => s.rerollDraftShop);
+  const evolveZergUnits = useGameStore((s) => s.evolveZergUnits);
   const removePlacedUnit = useGameStore((s) => s.removePlacedUnit);
   const populateSampleFormation = useGameStore((s) => s.populateSampleFormation);
   const clearAllyUnits = useGameStore((s) => s.clearAllyUnits);
@@ -128,7 +137,7 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
     <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-2.5 sm:p-3">
       {/* Top HUD Bar */}
       <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 rounded border border-slate-700/80 bg-[#0b111c]/92 px-3 py-1.5 backdrop-blur-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={returnToTitle}
@@ -165,20 +174,46 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
             ))}
           </div>
 
+          <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[11px] text-amber-300">
+            ACT {act}
+          </span>
           <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[11px] text-slate-200">
             병력 {allyCount}/{maxCapacity}
           </span>
+          <span
+            data-testid="minerals-badge"
+            className="rounded border border-sky-500/40 bg-sky-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-sky-300"
+          >
+            💎 광물 {minerals}
+          </span>
         </div>
 
-        {/* Grid Expansion (3x3 -> 4x4 -> 5x5) & Stage Mode (섬멸/방어/돌파) */}
-        <div className="flex items-center gap-2">
+        {/* Tactical Map, Codex, Grid Size & Stage Mode */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            data-testid="open-map-btn"
+            onClick={() => setMapOpen(true)}
+            className="cursor-pointer rounded border border-sky-500/60 bg-sky-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-sky-200 hover:bg-sky-900"
+          >
+            🗺 전술 지도
+          </button>
+          <button
+            type="button"
+            data-testid="open-codex-btn"
+            onClick={() => setCodexOpen(true)}
+            className="cursor-pointer rounded border border-slate-700 bg-slate-800/80 px-2 py-0.5 font-mono-tech text-[11px] text-slate-300 hover:bg-slate-700"
+          >
+            📖 도감
+          </button>
+
           <div className="flex items-center gap-1">
             {GRID_SIZES.map((size) => (
               <button
                 key={size}
                 type="button"
                 onClick={() => setGridSize(size)}
-                className={`cursor-pointer rounded px-2 py-0.5 font-mono-tech text-[11px] border transition-colors ${
+                className={`cursor-pointer rounded px-1.5 py-0.5 font-mono-tech text-[11px] border transition-colors ${
                   gridSize === size
                     ? 'border-sky-400 bg-sky-500/20 text-sky-200 font-semibold'
                     : 'border-slate-700 bg-slate-800/70 text-slate-400 hover:text-slate-200'
@@ -209,6 +244,16 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
 
         {/* Utility, Speed & Battle Start */}
         <div className="flex items-center gap-1.5">
+          {selectedRace === 'ZERG' && (
+            <button
+              type="button"
+              data-testid="zerg-evolve-btn"
+              onClick={evolveZergUnits}
+              className="cursor-pointer rounded border border-fuchsia-500/70 bg-fuchsia-950/70 px-2 py-0.5 font-mono-tech text-[11px] text-fuchsia-200 hover:bg-fuchsia-900"
+            >
+              🧬 군단 변이
+            </button>
+          )}
           <button
             type="button"
             onClick={populateSampleFormation}
@@ -250,28 +295,93 @@ export const PrepOverlay: React.FC<PrepOverlayProps> = ({ gameAppRef }) => {
         </div>
       </div>
 
-      {/* Middle Floating Side Panels (Synergies & Inspector) */}
+      {/* Middle Floating Side Panels (Synergies + 3-Choose-1 Draft Shop & Inspector) */}
       <div className="relative flex flex-1 items-start justify-between py-2">
-        {/* Left: Active Synergies */}
-        <div className="pointer-events-auto flex w-[176px] flex-col gap-1">
-          {synergySummary.activeSynergies.slice(0, 5).map((syn) => (
-            <div
-              key={syn.tag}
-              title={syn.bonusText}
-              className={`rounded border px-2 py-1 text-[11px] backdrop-blur-xs ${
-                syn.active
-                  ? 'border-amber-400/70 bg-amber-950/75 text-amber-200'
-                  : 'border-slate-700/70 bg-slate-900/75 text-slate-400'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2 font-mono-tech">
-                <span className="truncate">{syn.label}</span>
-                <span>
-                  {syn.count}/{syn.threshold}
-                </span>
+        {/* Left: Active Synergies, Owned Relics & 3-Choose-1 Draft Shop */}
+        <div className="pointer-events-auto flex w-[184px] flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
+            {synergySummary.activeSynergies.slice(0, 4).map((syn) => (
+              <div
+                key={syn.tag}
+                title={syn.bonusText}
+                className={`rounded border px-2 py-0.5 text-[10px] backdrop-blur-xs ${
+                  syn.active
+                    ? 'border-amber-400/70 bg-amber-950/75 text-amber-200'
+                    : 'border-slate-700/70 bg-slate-900/75 text-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 font-mono-tech">
+                  <span className="truncate">{syn.label}</span>
+                  <span>
+                    {syn.count}/{syn.threshold}
+                  </span>
+                </div>
               </div>
+            ))}
+          </div>
+
+          {relics.length > 0 && (
+            <div className="rounded border border-amber-500/40 bg-slate-950/85 p-1.5">
+              <div className="font-mono-tech text-[9px] text-amber-400">
+                보유 유물 ({relics.length})
+              </div>
+              {relics.map((r) => (
+                <div
+                  key={r.id}
+                  title={r.description}
+                  className="truncate text-[10px] text-slate-200"
+                >
+                  • {r.name}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          {/* 3-Choose-1 Draft Shop */}
+          <div className="rounded border border-slate-700/90 bg-[#0b111c]/94 p-2 backdrop-blur-xs">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="font-mono-tech text-[10px] font-semibold text-sky-300">
+                3택 1 상점 드래프트
+              </span>
+              <button
+                type="button"
+                data-testid="reroll-shop-btn"
+                onClick={rerollDraftShop}
+                className="cursor-pointer rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 font-mono-tech text-[9px] text-amber-300 hover:bg-slate-700"
+              >
+                ↻ 리롤(1)
+              </button>
+            </div>
+            <div className="flex flex-col gap-1">
+              {draftOffers.map((unitId, idx) => {
+                const def = getUnitDefinition(unitId);
+                if (!def) return null;
+                return (
+                  <button
+                    key={`${unitId}_${idx}`}
+                    type="button"
+                    data-testid={`draft-offer-${idx}`}
+                    onClick={() => draftFromShop(idx)}
+                    className="flex cursor-pointer items-center justify-between rounded border border-slate-800 bg-slate-900/90 px-1.5 py-1 text-left hover:border-sky-500/60"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <img
+                        src={AssetLoader.getUnitDataUrl(def, 1, 0)}
+                        alt={def.name}
+                        className="pixelated h-6 w-6 shrink-0 object-contain"
+                      />
+                      <span className="truncate text-[10px] text-slate-200">
+                        {def.name.split(' (')[0]}
+                      </span>
+                    </div>
+                    <span className="shrink-0 font-mono-tech text-[9px] text-sky-300">
+                      {def.cost}💎
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Center Top Banner */}
