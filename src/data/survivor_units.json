@@ -1,0 +1,88 @@
+[
+  {
+    "id": "ic_rifleman", "name": "소총병", "faction": "IRONCLAD", "role": "BACK",
+    "description": "가장 가까운 적을 자동 사격하는 기본 보병.",
+    "hp": 40, "shield": 0, "moveSpeed": 82, "radius": 5,
+    "attack": { "targeting": "AUTO", "style": "PROJECTILE", "damage": 7, "cooldownSec": 0.55, "rangePx": 125, "projectileSpeed": 300 },
+    "sprite": "SOLDIER"
+  },
+  {
+    "id": "ic_flamer", "name": "화염 방사병", "faction": "IRONCLAD", "role": "FRONT",
+    "description": "지휘관이 바라보는 방향으로 화염을 뿜어 원뿔 범위를 태운다.",
+    "hp": 75, "shield": 0, "moveSpeed": 78, "radius": 6,
+    "attack": { "targeting": "FACING", "style": "CONE", "damage": 9, "cooldownSec": 0.45, "rangePx": 48, "coneHalfAngleDeg": 32 },
+    "sprite": "FLAMER"
+  },
+  {
+    "id": "ic_mortar", "name": "박격 보행기", "faction": "IRONCLAD", "role": "BACK",
+    "description": "지휘관 방향 원거리에 포탄을 떨궈 넓은 범위를 폭파한다.",
+    "hp": 60, "shield": 0, "moveSpeed": 70, "radius": 7,
+    "attack": { "targeting": "FACING", "style": "PROJECTILE", "damage": 22, "cooldownSec": 1.6, "rangePx": 170, "projectileSpeed": 170, "splashRadiusPx": 30, "coneHalfAngleDeg": 40 },
+    "sprite": "WALKER"
+  },
+  {
+    "id": "ic_repair_drone", "name": "수리 드론", "faction": "IRONCLAD", "role": "BACK",
+    "description": "체력이 가장 낮은 아군(지휘관 포함)을 자동으로 수리한다.",
+    "hp": 30, "shield": 0, "moveSpeed": 90, "radius": 4,
+    "attack": { "targeting": "AUTO", "style": "HEAL", "damage": 8, "cooldownSec": 1.2, "rangePx": 90 },
+    "sprite": "DRONE"
+  },
+
+  {
+    "id": "hv_clawling", "name": "갈퀴충", "faction": "HIVE", "role": "FRONT",
+    "description": "가까운 적에게 달려들어 할퀴는 빠른 근접 개체.",
+    "hp": 38, "shield": 0, "moveSpeed": 105, "radius": 5,
+    "attack": { "targeting": "AUTO", "style": "MELEE", "damage": 8, "cooldownSec": 0.45, "rangePx": 10 },
+    "sprite": "CLAW"
+  },
+  {
+    "id": "hv_spitter", "name": "가시 투척충", "faction": "HIVE", "role": "BACK",
+    "description": "가장 가까운 적에게 가시를 날린다. 가시는 1회 관통.",
+    "hp": 34, "shield": 0, "moveSpeed": 85, "radius": 5,
+    "attack": { "targeting": "AUTO", "style": "PIERCE", "damage": 7, "cooldownSec": 0.7, "rangePx": 120, "projectileSpeed": 250, "pierce": 1 },
+    "sprite": "SPITTER"
+  },
+  {
+    "id": "hv_spewer", "name": "산성 분사체", "faction": "HIVE", "role": "FRONT",
+    "description": "지휘관이 바라보는 방향으로 산성액을 넓게 분사한다.",
+    "hp": 60, "shield": 0, "moveSpeed": 80, "radius": 6,
+    "attack": { "targeting": "FACING", "style": "CONE", "damage": 7, "cooldownSec": 0.5, "rangePx": 58, "coneHalfAngleDeg": 40 },
+    "sprite": "SPEWER"
+  },
+  {
+    "id": "hv_beetle", "name": "껍질 갑충", "faction": "HIVE", "role": "FRONT",
+    "description": "두꺼운 껍질로 적을 막아서는 탱커. 주변 적을 들이받는다.",
+    "hp": 170, "shield": 0, "moveSpeed": 72, "radius": 8,
+    "attack": { "targeting": "AUTO", "style": "MELEE", "damage": 12, "cooldownSec": 1.0, "rangePx": 12 },
+    "sprite": "BEETLE"
+  },
+
+  {
+    "id": "lm_warden", "name": "수호 기사", "faction": "LUMEN", "role": "FRONT",
+    "description": "광휘 검으로 가까운 적을 베는 근접 기사.",
+    "hp": 60, "shield": 40, "moveSpeed": 84, "radius": 6,
+    "attack": { "targeting": "AUTO", "style": "MELEE", "damage": 13, "cooldownSec": 0.7, "rangePx": 12 },
+    "sprite": "KNIGHT"
+  },
+  {
+    "id": "lm_prism", "name": "프리즘 포대", "faction": "LUMEN", "role": "BACK",
+    "description": "가장 가까운 적에게 광자탄을 쏘는 떠다니는 결정 포대.",
+    "hp": 30, "shield": 40, "moveSpeed": 80, "radius": 5,
+    "attack": { "targeting": "AUTO", "style": "PROJECTILE", "damage": 10, "cooldownSec": 0.8, "rangePx": 140, "projectileSpeed": 320 },
+    "sprite": "PRISM"
+  },
+  {
+    "id": "lm_lancer", "name": "광선 창병", "faction": "LUMEN", "role": "BACK",
+    "description": "지휘관이 바라보는 방향으로 적을 꿰뚫는 광선 창을 던진다.",
+    "hp": 36, "shield": 36, "moveSpeed": 80, "radius": 5,
+    "attack": { "targeting": "FACING", "style": "PIERCE", "damage": 16, "cooldownSec": 1.0, "rangePx": 180, "projectileSpeed": 360, "pierce": 5, "coneHalfAngleDeg": 25 },
+    "sprite": "LANCER"
+  },
+  {
+    "id": "lm_orb", "name": "공명 구체", "faction": "LUMEN", "role": "FRONT",
+    "description": "주변에 주기적으로 공명 파동을 방출해 둘러싼 적 모두에게 피해를 준다.",
+    "hp": 50, "shield": 60, "moveSpeed": 80, "radius": 6,
+    "attack": { "targeting": "AUTO", "style": "PULSE", "damage": 9, "cooldownSec": 1.3, "rangePx": 34 },
+    "sprite": "ORB"
+  }
+]

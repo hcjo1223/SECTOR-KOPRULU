@@ -1,0 +1,87 @@
+[
+  {
+    "id": "mite",
+    "name": "블라이트 진드기",
+    "hp": 9,
+    "damage": 3,
+    "contactCooldownSec": 0.8,
+    "speed": 46,
+    "radius": 4,
+    "xp": 1,
+    "sprite": "MITE",
+    "scale": 1,
+    "palette": {
+      "primary": "#c0483a",
+      "secondary": "#6e2420",
+      "accent": "#f0d070"
+    }
+  },
+  {
+    "id": "crawler",
+    "name": "블라이트 기어충",
+    "hp": 22,
+    "damage": 7,
+    "contactCooldownSec": 0.9,
+    "speed": 34,
+    "radius": 5,
+    "xp": 2,
+    "sprite": "CRAWLER",
+    "scale": 1,
+    "palette": {
+      "primary": "#9a5a3a",
+      "secondary": "#4e2c1c",
+      "accent": "#e07040"
+    }
+  },
+  {
+    "id": "bloater",
+    "name": "블라이트 부풀이",
+    "hp": 70,
+    "damage": 12,
+    "contactCooldownSec": 1.1,
+    "speed": 22,
+    "radius": 7,
+    "xp": 5,
+    "sprite": "BLOATER",
+    "scale": 1.2,
+    "palette": {
+      "primary": "#7aa040",
+      "secondary": "#3c5020",
+      "accent": "#d8f070"
+    }
+  },
+  {
+    "id": "brute",
+    "name": "블라이트 파쇄충",
+    "hp": 180,
+    "damage": 20,
+    "contactCooldownSec": 1.2,
+    "speed": 28,
+    "radius": 9,
+    "xp": 12,
+    "sprite": "BRUTE",
+    "scale": 1.5,
+    "palette": {
+      "primary": "#6a3a7a",
+      "secondary": "#32183c",
+      "accent": "#ff6060"
+    }
+  },
+  {
+    "id": "matron",
+    "name": "블라이트 모체",
+    "hp": 3500,
+    "damage": 35,
+    "contactCooldownSec": 1.0,
+    "speed": 24,
+    "radius": 20,
+    "xp": 0,
+    "sprite": "MATRON",
+    "scale": 2.5,
+    "palette": {
+      "primary": "#8a2a4a",
+      "secondary": "#3e1022",
+      "accent": "#ffd040"
+    }
+  }
+]

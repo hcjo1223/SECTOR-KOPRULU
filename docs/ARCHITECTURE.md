@@ -1,5 +1,28 @@
 # SECTOR: KOPRULU — 웹 아키텍처 설계서
 
+## 0. v2 부대 서바이벌 모듈 (현행)
+```text
+src/
+├── domain/survivor/          # 순수 로직 (pixi/DOM import 금지)
+│   ├── types.ts              # 진영·유닛·적·웨이브·런타임 상태 타입
+│   ├── SurvivorCatalog.ts    # src/data/survivor_*.json 로더
+│   ├── SurvivorEngine.ts     # 고정 타임스텝(1/30s) 헤드리스 시뮬레이션
+│   ├── Formation.ts          # 링 진형 슬롯(6k) 계산 + FRONT/BACK 배정
+│   └── SpatialHash.ts        # 수백 기 근접 탐색용 균일 격자 해시
+├── core/
+│   ├── SurvivorApp.ts        # Pixi 앱 수명주기, 틱 누적 루프, 정수 배율 반응형 뷰, HUD 동기화(10Hz)
+│   ├── SurvivorRenderer.ts   # 지휘관 추종 카메라, 틱 보간, id 기반 스프라이트 풀, 이펙트 Graphics
+│   ├── SurvivorSprites.ts    # 오리지널 12x12 도트 맵 → 팔레트 재채색 RGBA
+│   └── SurvivorInput.ts      # 키보드 + 가상 조이스틱 통합 이동 벡터
+├── store/useSurvivorStore.ts # 화면 전환, 엔진 인스턴스, HUD 스냅샷, 레벨업 선택
+├── ui/                       # SurvivorTitle, SurvivorHUD, LevelUpModal, ResultModal, VirtualJoystick
+└── data/survivor_{factions,units,enemies,waves}.json
+```
+- **뷰포트:** 고정 640x360 대신 호스트 크기에서 짧은 변 ≈240 논리 px가 되도록 정수 배율(zoom)을 고르고 논리 해상도를 `ceil(css/zoom)`으로 리사이즈. 스폰 반경은 뷰 반대각선 + 28px로 엔진에 전달.
+- **성능:** 적 500기 기준 틱당 ≈0.6ms (헤드리스 측정). 적 탐색·투사체 충돌·군집 분리 모두 공간 해시 사용.
+
+> 아래 1~4절은 v1(그리드 오토배틀러) 설계이며 레거시 코드 정리(M8) 전까지 참고용으로 유지합니다.
+
 ## 1. 기술 스택
 - **언어 / 렌더링:** TypeScript + PixiJS v8 (WebGL 2D 배칭, `scaleMode: 'nearest'`)
 - **빌드 도구:** Vite
