@@ -50,10 +50,10 @@ export const BattleHUD: React.FC = () => {
   const commanderSkill = getCommanderSkillForRace(selectedRace);
   const modeTitle =
     battleSnapshot.mode === 'ANNIHILATION'
-      ? '적 몰살 (ANNIHILATION)'
+      ? '적 몰살'
       : battleSnapshot.mode === 'DEFENSE'
-        ? '거점 버티기 (DEFENSE)'
-        : '적진 돌파 (BREAKTHROUGH)';
+        ? '거점 버티기'
+        : '적진 돌파';
 
   const relicChoices = getRelicChoicesForRace(
     selectedRace,
@@ -61,11 +61,11 @@ export const BattleHUD: React.FC = () => {
   );
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-2.5 sm:p-3">
+    <div className="contents lg:pointer-events-none lg:absolute lg:inset-0 lg:z-10 lg:flex lg:flex-col lg:justify-between lg:p-3">
       {/* Top Battle Status Bar */}
-      <div className="pointer-events-auto flex items-center justify-between gap-2 rounded border border-slate-700/85 bg-[#0b111c]/92 px-3 py-1.5 backdrop-blur-xs">
-        <div className="flex items-center gap-2.5">
-          <span className="rounded bg-rose-950/90 border border-rose-500/50 px-2 py-0.5 font-mono-tech text-[11px] font-semibold text-rose-300">
+      <div className="order-1 pointer-events-auto flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/85 bg-[#0b111c]/95 px-2.5 py-2 lg:order-none lg:rounded lg:border lg:px-3 lg:py-1.5 lg:backdrop-blur-xs">
+        <div className="flex items-center gap-2">
+          <span className="rounded border border-rose-500/50 bg-rose-950/90 px-2 py-0.5 font-mono-tech text-[11px] font-semibold text-rose-300">
             ⚔ {modeTitle}
           </span>
           <span className="font-mono-tech text-xs text-slate-200">
@@ -74,11 +74,11 @@ export const BattleHUD: React.FC = () => {
           </span>
         </div>
 
-        <div className="rounded border border-slate-700 bg-slate-950 px-3 py-0.5 font-pixel text-sm text-amber-300">
+        <div className="rounded border border-slate-700 bg-slate-950 px-2.5 py-0.5 font-pixel text-xs sm:text-sm text-amber-300">
           {remainingSec}s
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <div className="flex items-center rounded border border-slate-700 bg-slate-900/90 p-0.5">
             {SPEEDS.map((spd) => (
               <button
@@ -99,7 +99,7 @@ export const BattleHUD: React.FC = () => {
           <button
             type="button"
             onClick={returnToPrep}
-            className="cursor-pointer rounded border border-slate-600 bg-slate-800 px-2.5 py-0.5 font-mono-tech text-[11px] text-slate-200 hover:bg-slate-700"
+            className="cursor-pointer rounded border border-slate-600 bg-slate-800 px-2 py-0.5 font-mono-tech text-[11px] text-slate-200 hover:bg-slate-700"
           >
             정비 복귀
           </button>
@@ -107,9 +107,15 @@ export const BattleHUD: React.FC = () => {
       </div>
 
       {/* Center Status Banner & Outcome / Reward Modal */}
-      <div className="relative flex flex-1 items-center justify-center">
+      <div
+        className={`${
+          battleSnapshot.outcome !== 'ONGOING'
+            ? 'fixed inset-0 z-30 flex items-center justify-center bg-slate-950/70 p-4 lg:static lg:flex-1 lg:bg-transparent lg:p-0'
+            : 'order-3 px-2.5 pt-2 lg:order-none lg:relative lg:flex lg:flex-1 lg:items-center lg:justify-center lg:p-0'
+        }`}
+      >
         {statusBanner && battleSnapshot.outcome === 'ONGOING' && (
-          <div className="pointer-events-none absolute top-1 left-1/2 -translate-x-1/2 rounded border border-slate-700/80 bg-slate-950/85 px-3 py-0.5 font-mono-tech text-[11px] text-amber-300">
+          <div className="pointer-events-none truncate rounded border border-slate-700/80 bg-slate-950/85 px-3 py-1 text-center font-mono-tech text-[11px] text-amber-300 lg:absolute lg:left-1/2 lg:top-1 lg:-translate-x-1/2 lg:py-0.5">
             {statusBanner}
           </div>
         )}
@@ -117,7 +123,7 @@ export const BattleHUD: React.FC = () => {
         {battleSnapshot.outcome !== 'ONGOING' && (
           <div
             data-testid="battle-outcome-modal"
-            className="pointer-events-auto flex w-full max-w-md flex-col items-center rounded border border-slate-600 bg-[#0b111c]/96 p-5 text-center shadow-2xl backdrop-blur-sm"
+            className="pointer-events-auto flex max-h-[88dvh] w-full max-w-md flex-col items-center overflow-y-auto rounded border border-slate-600 bg-[#0b111c]/96 p-5 text-center shadow-2xl backdrop-blur-sm"
           >
             <div
               className={`font-pixel text-2xl tracking-wider ${
@@ -194,25 +200,25 @@ export const BattleHUD: React.FC = () => {
       </div>
 
       {/* Bottom Commander Intervention Bar */}
-      <div className="pointer-events-auto flex items-center justify-between rounded border border-slate-700/80 bg-[#0b111c]/94 px-3 py-2 backdrop-blur-xs">
+      <div className="order-4 pointer-events-auto m-2.5 flex flex-col gap-2 rounded border border-slate-700/80 bg-[#0b111c]/94 px-3 py-2 sm:flex-row sm:items-center sm:justify-between lg:order-none lg:m-0 lg:backdrop-blur-xs">
         <div className="text-xs text-slate-300">
-          <span className="font-mono-tech text-[10px] text-amber-400 uppercase mr-2">
-            COMMANDER SKILL (1회 개입)
+          <span className="mr-2 font-mono-tech text-[10px] text-amber-400 uppercase">
+            COMMANDER SKILL (1회)
           </span>
           <strong className="text-slate-100">[{commanderSkill.name}]</strong> —{' '}
           <span className="text-slate-400">{commanderSkill.desc}</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {selectedRace === 'PROTOSS' && (
             <button
               type="button"
               data-testid="battle-warp-btn"
               disabled={minerals < 2 || battleSnapshot.outcome !== 'ONGOING'}
               onClick={() => warpInProtossUnit()}
-              className={`cursor-pointer rounded border px-2.5 py-1 font-mono-tech text-xs font-semibold transition-colors ${
+              className={`cursor-pointer rounded border px-2.5 py-1.5 font-mono-tech text-xs font-semibold transition-colors ${
                 minerals < 2 || battleSnapshot.outcome !== 'ONGOING'
-                  ? 'border-slate-700 bg-slate-800/60 text-slate-500 cursor-not-allowed'
+                  ? 'cursor-not-allowed border-slate-700 bg-slate-800/60 text-slate-500'
                   : 'border-sky-400 bg-sky-600 text-white hover:bg-sky-500'
               }`}
             >
@@ -227,10 +233,10 @@ export const BattleHUD: React.FC = () => {
               battleSnapshot.outcome !== 'ONGOING'
             }
             onClick={() => triggerCommanderSkill()}
-            className={`cursor-pointer rounded border px-3 py-1 font-mono-tech text-xs font-bold transition-colors ${
+            className={`cursor-pointer rounded border px-3 py-1.5 font-mono-tech text-xs font-bold transition-colors ${
               battleSnapshot.commanderSkillUsed ||
               battleSnapshot.outcome !== 'ONGOING'
-                ? 'border-slate-700 bg-slate-800/60 text-slate-500 cursor-not-allowed'
+                ? 'cursor-not-allowed border-slate-700 bg-slate-800/60 text-slate-500'
                 : 'border-amber-400 bg-amber-500 text-slate-950 hover:bg-amber-400'
             }`}
           >

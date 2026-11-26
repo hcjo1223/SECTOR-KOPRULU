@@ -21,9 +21,9 @@ export const CodexModal: React.FC = () => {
   return (
     <div
       data-testid="codex-modal"
-      className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-xs"
+      className="pointer-events-auto fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-950/90 p-3 backdrop-blur-xs sm:items-center sm:p-4"
     >
-      <div className="flex max-h-[90%] w-full max-w-4xl flex-col overflow-hidden rounded border border-slate-700 bg-[#0b111c] p-5 shadow-2xl">
+      <div className="my-auto flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded border border-slate-700 bg-[#0b111c] p-4 sm:p-5 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-3">
             <h2 className="font-pixel text-lg text-slate-100">
