@@ -39,13 +39,13 @@ export function evaluateStageOutcome(
       if (objectiveDestroyed) {
         return 'DEFEAT';
       }
-      return elapsedSec >= timeLimitSec ? 'VICTORY' : 'ONGOING';
-
-    case 'BREAKTHROUGH':
-      if (objectiveDestroyed) {
+      if (aliveEnemies === 0 || elapsedSec >= timeLimitSec) {
         return 'VICTORY';
       }
-      if (aliveEnemies === 0) {
+      return 'ONGOING';
+
+    case 'BREAKTHROUGH':
+      if (objectiveDestroyed || aliveEnemies === 0) {
         return 'VICTORY';
       }
       return elapsedSec >= timeLimitSec ? 'DEFEAT' : 'ONGOING';

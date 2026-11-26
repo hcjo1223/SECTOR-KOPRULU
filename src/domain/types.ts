@@ -27,9 +27,11 @@ export type SkillTrigger = 'ON_COMBAT_START' | 'ON_ATTACK' | 'ON_KILL' | 'PASSIV
 
 export type StageMode = 'ANNIHILATION' | 'DEFENSE' | 'BREAKTHROUGH';
 
-export type GamePhase = 'TITLE' | 'PREP' | 'BATTLE';
+export type GamePhase = 'TITLE' | 'MAP' | 'PREP' | 'BATTLE' | 'REWARD';
 
 export type GameSpeed = 1 | 2 | 4;
+
+export type CommanderSkillId = 'NUCLEAR_SCAN' | 'DARK_SWARM' | 'PSIONIC_STORM';
 
 export interface UnitBaseStats {
   hp: number;
@@ -98,6 +100,8 @@ export interface PlacedUnit {
   row: number;
   currentHp: number;
   currentShield: number;
+  isObjectiveStructure?: boolean;
+  structureName?: string;
 }
 
 export type UnitActionState = 'IDLE' | 'MOVE' | 'ATTACK' | 'DIE';
@@ -114,6 +118,57 @@ export interface BattleUnitState {
   maxShield: number;
   action: UnitActionState;
   facing: 1 | -1;
+  cooldownSec: number;
+  attackCount: number;
+  stimpackActive: boolean;
+  siegeModeActive: boolean;
+  chargeActive: boolean;
+  darkSwarmBuff: boolean;
+  isObjectiveStructure: boolean;
+  structureName?: string;
+}
+
+export interface BattleProjectileState {
+  id: number;
+  projectileId: string;
+  sourceInstanceId: string;
+  sourceFaction: Faction;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  targetInstanceId: string | null;
+  damage: number;
+  splashRadiusPx: number;
+  speedPxPerSec: number;
+  color: string;
+  size: number;
+  bouncesLeft: number;
+  bonusVsArmoredPct: number;
+  visitedIds: string[];
+}
+
+export type BattleEffectType =
+  | 'EXPLOSION'
+  | 'HEAL'
+  | 'PSI_STORM'
+  | 'DARK_SWARM'
+  | 'NUCLEAR'
+  | 'STIMPACK'
+  | 'SPINE_LINE'
+  | 'CLEAVE';
+
+export interface BattleEffectState {
+  id: number;
+  type: BattleEffectType;
+  x: number;
+  y: number;
+  endX?: number;
+  endY?: number;
+  radiusPx: number;
+  color: string;
+  ttlSec: number;
+  maxTtlSec: number;
 }
 
 export interface SynergyCount {
@@ -148,4 +203,29 @@ export interface StageDefinition {
   grid_size: GridSize;
   time_limit_sec: number;
   description: string;
+}
+
+export type MapNodeType = 'COMBAT' | 'SUPPLY' | 'DEPOT';
+
+export interface TacticalMapNode {
+  id: string;
+  act: 1 | 2 | 3;
+  step: number;
+  lane: 0 | 1 | 2;
+  type: MapNodeType;
+  title: string;
+  subtitle: string;
+  stageMode: StageMode;
+  gridSize: GridSize;
+  rewardMinerals: number;
+  completed: boolean;
+}
+
+export interface RelicDefinition {
+  id: string;
+  name: string;
+  description: string;
+  race: Race | 'ALL';
+  bonusType: 'ATK_PCT' | 'HP_PCT' | 'SHIELD_FLAT' | 'ATK_SPD_PCT' | 'START_MINERALS';
+  value: number;
 }

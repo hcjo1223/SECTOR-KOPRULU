@@ -1,7 +1,10 @@
 import { Application } from 'pixi.js';
+import { FIXED_DT } from '../domain/combat/BattleEngine';
 import { useGameStore } from '../store/useGameStore';
 import { AssetLoader } from './AssetLoader';
 import { SceneManager, VIRTUAL_HEIGHT, VIRTUAL_WIDTH } from './SceneManager';
+
+const FIXED_DT_MS = FIXED_DT * 1000;
 
 export class GameApp {
   private app: Application | null = null;
@@ -9,6 +12,7 @@ export class GameApp {
   private unsubscribeStore: (() => void) | null = null;
   private hostElement: HTMLElement | null = null;
   private destroyed = false;
+  private tickAccumulatorMs = 0;
 
   public async mount(container: HTMLElement): Promise<void> {
     if (this.app || this.destroyed) {
@@ -51,6 +55,24 @@ export class GameApp {
     });
 
     app.ticker.add((ticker) => {
+      const store = useGameStore.getState();
+      if (
+        store.phase === 'BATTLE' &&
+        store.battleSnapshot?.outcome === 'ONGOING'
+      ) {
+        this.tickAccumulatorMs += Math.min(100, ticker.deltaMS);
+        let baseTicks = 0;
+        while (this.tickAccumulatorMs >= FIXED_DT_MS) {
+          this.tickAccumulatorMs -= FIXED_DT_MS;
+          baseTicks += 1;
+        }
+        if (baseTicks > 0) {
+          store.stepBattleTicks(baseTicks * store.speed);
+        }
+      } else {
+        this.tickAccumulatorMs = 0;
+      }
+
       sceneManager.update(ticker.deltaMS);
     });
   }

@@ -1,6 +1,10 @@
 import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import { AssetLoader } from '../core/AssetLoader';
-import type { Faction, UnitDefinition } from '../domain/types';
+import type {
+  Faction,
+  UnitActionState,
+  UnitDefinition,
+} from '../domain/types';
 
 export class UnitEntity {
   public readonly container: Container;
@@ -11,7 +15,8 @@ export class UnitEntity {
   private readonly ringGraphics: Graphics;
   private readonly selectionGraphics: Graphics;
   private readonly sprite: Sprite;
-  private readonly frames: readonly [Texture, Texture];
+  private readonly rightFrames: readonly [Texture, Texture];
+  private readonly leftFrames: readonly [Texture, Texture];
   private readonly barsGraphics: Graphics;
   private readonly def: UnitDefinition;
 
@@ -20,10 +25,15 @@ export class UnitEntity {
   private logicalX = 0;
   private logicalY = 0;
   private currentHp: number;
+  private maxHp: number;
   private currentShield: number;
+  private maxShield: number;
+  private facing: 1 | -1;
+  private action: UnitActionState = 'IDLE';
   private isSelected = false;
   private animTimer = 0;
   private currentFrameIdx: 0 | 1 = 0;
+  private attackBump = 0;
 
   constructor(
     instanceId: string,
@@ -41,8 +51,11 @@ export class UnitEntity {
     this.targetX = initialX;
     this.targetY = initialY;
     this.currentHp = def.base_stats.hp;
+    this.maxHp = def.base_stats.hp;
     this.currentShield = def.base_stats.shield;
-    this.animTimer = ((initialX * 7 + initialY * 13) % 25);
+    this.maxShield = def.base_stats.shield;
+    this.facing = faction === 'ALLY' ? 1 : -1;
+    this.animTimer = (initialX * 7 + initialY * 13) % 25;
 
     this.container = new Container();
     this.container.eventMode = 'static';
@@ -52,12 +65,16 @@ export class UnitEntity {
     this.ringGraphics = new Graphics();
     this.barsGraphics = new Graphics();
 
-    const facing = faction === 'ALLY' ? 1 : -1;
-    this.frames = [
-      AssetLoader.getUnitTexture(def, facing, 0),
-      AssetLoader.getUnitTexture(def, facing, 1),
+    this.rightFrames = [
+      AssetLoader.getUnitTexture(def, 1, 0),
+      AssetLoader.getUnitTexture(def, 1, 1),
     ];
-    this.sprite = new Sprite(this.frames[0]);
+    this.leftFrames = [
+      AssetLoader.getUnitTexture(def, -1, 0),
+      AssetLoader.getUnitTexture(def, -1, 1),
+    ];
+
+    this.sprite = new Sprite(this.getActiveTexture());
     this.sprite.anchor.set(0.5, 0.5);
     this.sprite.x = Math.round(def.visual.pivot_offset[0]);
     this.sprite.y = Math.round(def.visual.pivot_offset[1]);
@@ -72,6 +89,12 @@ export class UnitEntity {
     this.syncTransform();
   }
 
+  private getActiveTexture(): Texture {
+    return this.facing === 1
+      ? this.rightFrames[this.currentFrameIdx]
+      : this.leftFrames[this.currentFrameIdx];
+  }
+
   public setTargetPosition(x: number, y: number, immediate: boolean = false): void {
     this.targetX = x;
     this.targetY = y;
@@ -82,10 +105,40 @@ export class UnitEntity {
     }
   }
 
-  public setVitals(hp: number, shield: number): void {
-    if (this.currentHp !== hp || this.currentShield !== shield) {
+  public setFacing(facing: 1 | -1): void {
+    if (this.facing !== facing) {
+      this.facing = facing;
+      this.sprite.texture = this.getActiveTexture();
+    }
+  }
+
+  public setAction(action: UnitActionState): void {
+    if (this.action !== action) {
+      this.action = action;
+      if (action === 'ATTACK') {
+        this.attackBump = 3;
+      }
+    }
+    this.container.visible = action !== 'DIE' && this.currentHp > 0;
+  }
+
+  public setVitals(
+    hp: number,
+    shield: number,
+    maxHp: number = this.maxHp,
+    maxShield: number = this.maxShield
+  ): void {
+    if (
+      this.currentHp !== hp ||
+      this.currentShield !== shield ||
+      this.maxHp !== maxHp ||
+      this.maxShield !== maxShield
+    ) {
       this.currentHp = hp;
       this.currentShield = shield;
+      this.maxHp = Math.max(1, maxHp);
+      this.maxShield = Math.max(0, maxShield);
+      this.container.visible = hp > 0;
       this.drawBars();
     }
   }
@@ -100,7 +153,8 @@ export class UnitEntity {
 
   public setDragging(dragging: boolean): void {
     this.container.alpha = dragging ? 0.45 : 1;
-    this.container.cursor = dragging ? 'grabbing' : this.faction === 'ALLY' ? 'grab' : 'pointer';
+    this.container.cursor =
+      dragging ? 'grabbing' : this.faction === 'ALLY' ? 'grab' : 'pointer';
   }
 
   public update(dtFactor: number = 0.28): void {
@@ -114,14 +168,21 @@ export class UnitEntity {
       this.logicalY += dy * dtFactor;
     }
 
-    // 2-frame Idle pixel animation cycle
-    this.animTimer += dtFactor * 3.2;
+    if (this.attackBump > 0) {
+      this.attackBump = Math.max(0, this.attackBump - dtFactor * 0.8);
+    }
+
+    const animRate = this.action === 'MOVE' ? 5.5 : 3.2;
+    this.animTimer += dtFactor * animRate;
     if (this.animTimer >= 26) {
       this.animTimer = 0;
       this.currentFrameIdx = this.currentFrameIdx === 0 ? 1 : 0;
-      this.sprite.texture = this.frames[this.currentFrameIdx];
+      this.sprite.texture = this.getActiveTexture();
     }
 
+    this.sprite.x = Math.round(
+      this.def.visual.pivot_offset[0] + this.facing * this.attackBump
+    );
     this.syncTransform();
   }
 
@@ -157,28 +218,32 @@ export class UnitEntity {
     const halfW = Math.round(width / 2);
     const barY = Math.max(
       -34,
-      Math.round(this.def.visual.pivot_offset[1] - this.def.visual.sprite_size / 2 - 2)
+      Math.round(
+        this.def.visual.pivot_offset[1] - this.def.visual.sprite_size / 2 - 2
+      )
     );
 
-    const maxHp = Math.max(1, this.def.base_stats.hp);
-    const hpRatio = Math.max(0, Math.min(1, this.currentHp / maxHp));
+    const hpRatio = Math.max(0, Math.min(1, this.currentHp / this.maxHp));
     const hpColor = this.faction === 'ALLY' ? 0x22c55e : 0xef4444;
 
-    // HP background + fill
     this.barsGraphics.rect(-halfW - 1, barY - 1, width + 2, 4);
     this.barsGraphics.fill({ color: 0x090d14 });
     this.barsGraphics.rect(-halfW, barY, Math.round(width * hpRatio), 2);
     this.barsGraphics.fill({ color: hpColor });
 
-    // Optional Protoss Shield bar above HP
-    if (this.def.base_stats.shield > 0) {
+    if (this.maxShield > 0) {
       const shieldRatio = Math.max(
         0,
-        Math.min(1, this.currentShield / this.def.base_stats.shield)
+        Math.min(1, this.currentShield / this.maxShield)
       );
       this.barsGraphics.rect(-halfW - 1, barY - 4, width + 2, 3);
       this.barsGraphics.fill({ color: 0x090d14 });
-      this.barsGraphics.rect(-halfW, barY - 3, Math.round(width * shieldRatio), 2);
+      this.barsGraphics.rect(
+        -halfW,
+        barY - 3,
+        Math.round(width * shieldRatio),
+        2
+      );
       this.barsGraphics.fill({ color: 0x38bdf8 });
     }
   }
