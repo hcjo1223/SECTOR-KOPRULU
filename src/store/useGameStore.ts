@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { SoundManager } from '../core/SoundManager';
 import {
   BattleEngine,
   type BattleSnapshot,
@@ -7,6 +8,7 @@ import {
   CENTER_GAP_COLS,
   findFirstEmptyAllyCell,
   getMaxCapacity,
+  gridToLogicalCenter,
   moveOrSwapUnitOnGrid,
   placeUnitOnGrid,
   removeUnitFromGrid,
@@ -57,6 +59,7 @@ interface GameStoreState {
   gridSize: GridSize;
   stageMode: StageMode;
   speed: GameSpeed;
+  soundMuted: boolean;
   placedUnits: PlacedUnit[];
   selectedInstanceId: string | null;
   selectedRosterUnitId: string | null;
@@ -77,6 +80,7 @@ interface GameStoreState {
   setGridSize: (size: GridSize) => void;
   setStageMode: (mode: StageMode) => void;
   setSpeed: (speed: GameSpeed) => void;
+  toggleSoundMute: () => void;
   setMapOpen: (open: boolean) => void;
   setCodexOpen: (open: boolean) => void;
   selectMapNode: (nodeId: string) => void;
@@ -89,6 +93,8 @@ interface GameStoreState {
   draftFromShop: (offerIndex: number) => boolean;
   rerollDraftShop: () => boolean;
   evolveZergUnits: () => boolean;
+  warpInProtossUnit: () => boolean;
+  activateTerranAddon: () => boolean;
   moveOrSwapGridUnit: (instanceId: string, col: number, row: number) => boolean;
   removePlacedUnit: (instanceId: string) => void;
   populateSampleFormation: () => void;
@@ -221,6 +227,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   gridSize: 3,
   stageMode: 'ANNIHILATION',
   speed: 1,
+  soundMuted: false,
   placedUnits: initialUnits,
   selectedInstanceId: initialUnits[0]?.instanceId ?? null,
   selectedRosterUnitId: null,
@@ -237,6 +244,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   isCodexOpen: false,
 
   startGame: (race) => {
+    SoundManager.playClick();
     const gridSize: GridSize = 3;
     const placedUnits = createInitialPlacement(race, gridSize);
     const mapNodes = generateTacticalMap();
@@ -266,6 +274,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   },
 
   returnToTitle: () => {
+    SoundManager.playClick();
     set({
       phase: 'TITLE',
       dragPayload: null,
@@ -281,6 +290,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (state.gridSize === newSize) {
       return;
     }
+    SoundManager.playClick();
     const onlyAllies = state.placedUnits.filter((u) => u.faction === 'ALLY');
     const resized = resizeGridUnits(onlyAllies, state.gridSize, newSize);
     const nextUnits = [
@@ -306,6 +316,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   },
 
   setStageMode: (mode) => {
+    SoundManager.playClick();
     const modeLabel =
       mode === 'ANNIHILATION'
         ? '적 몰살 (Annihilation)'
@@ -319,14 +330,22 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   },
 
   setSpeed: (speed) => {
+    SoundManager.playClick();
     set({ speed });
   },
 
+  toggleSoundMute: () => {
+    const muted = SoundManager.toggleMute();
+    set({ soundMuted: muted });
+  },
+
   setMapOpen: (open) => {
+    SoundManager.playClick();
     set({ isMapOpen: open });
   },
 
   setCodexOpen: (open) => {
+    SoundManager.playClick();
     set({ isCodexOpen: open });
   },
 
@@ -336,6 +355,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (!node) {
       return;
     }
+    SoundManager.playDeploy();
 
     const updatedNodes = state.mapNodes.map((n) =>
       n.id === nodeId ? { ...n, completed: true } : n
@@ -439,6 +459,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
             }
           : u
       );
+      SoundManager.playDeploy();
       set({
         placedUnits: workingUnits,
         selectedInstanceId: occupant.instanceId,
@@ -469,6 +490,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       return false;
     }
 
+    SoundManager.playDeploy();
     const def = getUnitDefinition(unitId);
     set({
       placedUnits: result.units,
@@ -538,6 +560,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       set({ statusBanner: '상점 리롤에 필요한 광물(1)이 부족합니다.' });
       return false;
     }
+    SoundManager.playClick();
     const nextSeed = state.rollSeed + 1;
     set({
       minerals: state.minerals - 1,
@@ -565,6 +588,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       return false;
     }
 
+    SoundManager.playEvolution();
     const filtered = state.placedUnits.filter(
       (u) =>
         u.instanceId !== pair.secondary.instanceId &&
@@ -590,6 +614,77 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     return true;
   },
 
+  warpInProtossUnit: () => {
+    const state = get();
+    if (state.selectedRace !== 'PROTOSS') {
+      return false;
+    }
+    if (state.minerals < 2) {
+      set({ statusBanner: '차원 소환에 필요한 광물(2💎)이 부족합니다.' });
+      return false;
+    }
+
+    if (state.phase === 'BATTLE') {
+      const center = gridToLogicalCenter(
+        Math.max(0, state.gridSize - 1),
+        Math.floor(state.gridSize / 2)
+      );
+      const ok = battleEngine.warpInAllyUnit(
+        createInstanceId('warp_ally'),
+        'protoss_zealot',
+        center.x,
+        center.y
+      );
+      if (!ok) {
+        return false;
+      }
+      SoundManager.playWarpIn();
+      set({
+        minerals: state.minerals - 2,
+        battleSnapshot: { ...battleEngine.getSnapshot() },
+        statusBanner: '[차원 관문] 전장에 광전사(Zealot) 즉시 차원 소환! (-2 광물)',
+      });
+      return true;
+    }
+
+    const deployed = state.quickDeployFromRoster('protoss_zealot');
+    if (!deployed) {
+      return false;
+    }
+    SoundManager.playWarpIn();
+    set({
+      minerals: state.minerals - 2,
+      statusBanner: '[차원 관문] 전열에 광전사(Zealot) 즉시 차원 소환! (-2 광물)',
+    });
+    return true;
+  },
+
+  activateTerranAddon: () => {
+    const state = get();
+    if (state.selectedRace !== 'TERRAN') {
+      return false;
+    }
+    if (state.minerals < 2) {
+      set({ statusBanner: '전술 애드온 개조에 필요한 광물(2💎)이 부족합니다.' });
+      return false;
+    }
+    SoundManager.playDeploy();
+    const upgraded = state.placedUnits.map((u) =>
+      u.faction === 'ALLY'
+        ? {
+            ...u,
+            currentHp: Math.round(u.currentHp * 1.25),
+          }
+        : u
+    );
+    set({
+      minerals: state.minerals - 2,
+      placedUnits: upgraded,
+      statusBanner: '[테란 전술 개조] 전 병력 반응로/애드온 장갑 강화 (+25% 내구도, -2 광물)',
+    });
+    return true;
+  },
+
   moveOrSwapGridUnit: (instanceId, col, row) => {
     const state = get();
     if (state.phase !== 'PREP') {
@@ -606,6 +701,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       set({ statusBanner: '아군 전술 구역 내부로만 이동할 수 있습니다.' });
       return false;
     }
+    SoundManager.playDeploy();
     set({
       placedUnits: result.units,
       selectedInstanceId: instanceId,
@@ -626,6 +722,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (!target || target.faction !== 'ALLY') {
       return;
     }
+    SoundManager.playClick();
     const nextUnits = removeUnitFromGrid(state.placedUnits, instanceId);
     const def = getUnitDefinition(target.unitId);
     set({
@@ -639,6 +736,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   populateSampleFormation: () => {
     const state = get();
+    SoundManager.playDeploy();
     const pool = getUnitsByRace(state.selectedRace);
     const enemies = state.placedUnits.filter((u) => u.faction === 'ENEMY');
     const allies: PlacedUnit[] = [];
@@ -682,6 +780,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   clearAllyUnits: () => {
     const state = get();
+    SoundManager.playClick();
     const enemies = state.placedUnits.filter((u) => u.faction === 'ENEMY');
     const workerId = getStartingWorkerId(state.selectedRace);
     const workerDef = getUnitDefinition(workerId);
@@ -719,6 +818,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       set({ statusBanner: '전투를 시작하려면 최소 1기의 아군 유닛을 배치하세요!' });
       return;
     }
+
+    SoundManager.playBattleStart();
 
     let hpBonusPct = 0;
     let shieldBonusFlat = 0;
@@ -827,7 +928,13 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (state.phase !== 'BATTLE') {
       return;
     }
+    const prevOutcome = state.battleSnapshot?.outcome;
     const snap = battleEngine.step(ticks);
+    if (prevOutcome === 'ONGOING' && snap.outcome === 'VICTORY') {
+      SoundManager.playVictory();
+    } else if (prevOutcome === 'ONGOING' && snap.outcome === 'DEFEAT') {
+      SoundManager.playDefeat();
+    }
     set({ battleSnapshot: { ...snap } });
   },
 
@@ -839,6 +946,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     const skill = getCommanderSkillForRace(state.selectedRace);
     const ok = battleEngine.triggerCommanderSkill(skill.id);
     if (ok) {
+      SoundManager.playCommanderSkill(state.selectedRace);
       set({
         battleSnapshot: { ...battleEngine.getSnapshot() },
         statusBanner: `[지휘관 개입] ${skill.name} 발동!`,
@@ -849,6 +957,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   claimVictoryReward: (rewardUnitId, rewardRelicId) => {
     const state = get();
+    SoundManager.playDeploy();
     let nextRelics = state.relics;
     let extraMinerals = 6 + state.act * 2;
 
@@ -891,6 +1000,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   returnToPrep: () => {
     const state = get();
+    SoundManager.playClick();
     set({
       phase: 'PREP',
       battleSnapshot: null,
