@@ -44,6 +44,11 @@ export const MAX_MODULE_LEVEL = 5;
 
 const MELEE_LEASH_PX = 46;
 
+/** 지휘관 패시브 수치 (밸런스 조정 지점) */
+const GUNNERY_ATTACK_SPEED_MUL = 1.08; // 현장 사령관 [화력 통제]
+const VANGUARD_FACING_DAMAGE_MUL = 1.4; // 돌격 지휘관 [돌파 명령]: 이동 중 방향형 분대 피해
+const VANGUARD_MOVE_SPEED_MUL = 1.12; // 돌격 지휘관 이동속도
+
 /** 공격 모션: 예비동작(ATTACK 0) → 발사·반동·복귀(ATTACK 1~3)에 쓰는 시간 */
 export const ATTACK_RELEASE_SEC = 0.21;
 /**
@@ -213,7 +218,7 @@ export class SurvivorEngine {
   }
 
   public get speedMul(): number {
-    return (1 + 0.06 * this.moduleLevel('MOBILITY')) * (this.commanderDef.passive === 'VANGUARD' ? 1.08 : 1);
+    return (1 + 0.06 * this.moduleLevel('MOBILITY')) * (this.commanderDef.passive === 'VANGUARD' ? VANGUARD_MOVE_SPEED_MUL : 1);
   }
 
   public get overchargeMul(): number {
@@ -710,7 +715,7 @@ export class SurvivorEngine {
 
       // 공격: 쿨다운 완료 + 표적 확인 → 예비동작 → 발동
       m.attackFlashSec = Math.max(0, m.attackFlashSec - dt);
-      const gunnery = passive === 'GUNNERY' && (a.style === 'PROJECTILE' || a.style === 'PIERCE') ? 1.15 : 1;
+      const gunnery = passive === 'GUNNERY' && (a.style === 'PROJECTILE' || a.style === 'PIERCE') ? GUNNERY_ATTACK_SPEED_MUL : 1;
       const tempo = gunnery;
       m.cooldown -= dt * tempo;
       const cdFull = a.cooldownSec * rapid;
@@ -737,7 +742,7 @@ export class SurvivorEngine {
       m.windupSec = 0;
       let dmg = a.damage * squadLevelDamageMult(sqLevel) * coreMul * (entrenched ? 1.35 : 1);
       if (passive === 'VANGUARD' && moving && a.targeting === 'FACING') {
-        dmg *= 1.25;
+        dmg *= VANGUARD_FACING_DAMAGE_MUL;
       }
       if (passive === 'FORTIFY' && entrenched && (a.style === 'MINE' || a.style === 'CHAIN')) {
         dmg *= 1.4;

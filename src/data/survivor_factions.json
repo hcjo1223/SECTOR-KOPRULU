@@ -24,7 +24,7 @@
       {
         "id": "ic_marshal",
         "name": "현장 사령관",
-        "hp": 120,
+        "hp": 100,
         "shield": 0,
         "moveSpeed": 74,
         "radius": 6,
@@ -32,7 +32,7 @@
         "attack": {
           "targeting": "AUTO",
           "style": "PROJECTILE",
-          "damage": 6,
+          "damage": 5,
           "cooldownSec": 0.7,
           "rangePx": 120,
           "projectileSpeed": 260
@@ -41,7 +41,7 @@
         "title": "입문 · 사격 특화",
         "passive": "GUNNERY",
         "passiveName": "화력 통제",
-        "passiveDesc": "사격·관통형 분대의 공격 속도 +15%.",
+        "passiveDesc": "사격·관통형 분대의 공격 속도 +8%.",
         "startingSquad": "ic_rifle"
       },
       {
@@ -75,7 +75,7 @@
       {
         "id": "ic_vanguard",
         "name": "돌격 지휘관",
-        "hp": 105,
+        "hp": 145,
         "shield": 0,
         "moveSpeed": 80,
         "radius": 6,
@@ -83,8 +83,8 @@
         "attack": {
           "targeting": "AUTO",
           "style": "PROJECTILE",
-          "damage": 6,
-          "cooldownSec": 0.7,
+          "damage": 8,
+          "cooldownSec": 0.6,
           "rangePx": 120,
           "projectileSpeed": 260
         },
@@ -92,7 +92,7 @@
         "title": "기동 · 전방 특화",
         "passive": "VANGUARD",
         "passiveName": "돌파 명령",
-        "passiveDesc": "이동 중 지휘관 방향형 분대 피해 +25%. 지휘관 이동속도 +8%.",
+        "passiveDesc": "이동 중 지휘관 방향형 분대 피해 +40%. 지휘관 이동속도 +12%.",
         "startingSquad": "ic_flamer",
         "paletteOverride": {
           "primary": "#b85a4f",
