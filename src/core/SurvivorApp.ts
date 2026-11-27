@@ -8,6 +8,16 @@ import { SurvivorRenderer, VIRTUAL_HEIGHT, VIRTUAL_WIDTH } from './SurvivorRende
 const TARGET_SHORT_SIDE = 320;
 
 const DT_MS = SURVIVOR_DT * 1000;
+/**
+ * 진형 링 수에 따른 카메라 배율: 부대가 커질수록 전장을 넓게 보여준다.
+ * 1링 1.00x → 2링 0.84x(표시 면적 +42%) → 3링 0.72x(+93%).
+ * 논리 해상도를 키우고 캔버스는 nearest(pixelated)로 화면에 맞추므로 안티앨리어싱은 생기지 않는다.
+ */
+export function ringZoomFactor(rings: number): number {
+  return rings >= 3 ? 0.72 : rings === 2 ? 0.84 : 1;
+}
+/** 줌 전환 속도 (배율/초) */
+const ZOOM_EASE_PER_SEC = 0.6;
 const HUD_SYNC_MS = 100;
 
 /** PixiJS 앱 수명주기 + 고정 타임스텝 루프 + HUD 동기화 */
@@ -22,6 +32,10 @@ export class SurvivorApp {
   private resizeObserver: ResizeObserver | null = null;
   private viewW = VIRTUAL_WIDTH;
   private viewH = VIRTUAL_HEIGHT;
+  /** 정수 배율 기준 논리 해상도 (줌아웃 전) */
+  private baseW = VIRTUAL_WIDTH;
+  private baseH = VIRTUAL_HEIGHT;
+  private zoomFactor = 1;
 
   public async mount(container: HTMLElement): Promise<void> {
     if (this.app || this.destroyed) {
@@ -76,10 +90,26 @@ export class SurvivorApp {
       return;
     }
     const zoom = Math.max(1, Math.min(6, Math.round(Math.min(w, h) / TARGET_SHORT_SIDE)));
-    this.viewW = Math.ceil(w / zoom);
-    this.viewH = Math.ceil(h / zoom);
-    app.renderer.resize(this.viewW, this.viewH);
-    this.renderer.resize(this.viewW, this.viewH);
+    this.baseW = Math.ceil(w / zoom);
+    this.baseH = Math.ceil(h / zoom);
+    this.applyView(true);
+  }
+
+  /** 현재 줌 배율로 논리 해상도를 맞춘다. 2px 미만 변화는 무시해 매 프레임 리사이즈를 피한다. */
+  private applyView(force = false): void {
+    const app = this.app;
+    if (!app || !this.renderer) {
+      return;
+    }
+    const w = Math.ceil(this.baseW / this.zoomFactor);
+    const h = Math.ceil(this.baseH / this.zoomFactor);
+    if (!force && Math.abs(w - this.viewW) < 2 && Math.abs(h - this.viewH) < 2) {
+      return;
+    }
+    this.viewW = w;
+    this.viewH = h;
+    app.renderer.resize(w, h);
+    this.renderer.resize(w, h);
   }
 
   private frame(deltaMs: number): void {
@@ -94,12 +124,21 @@ export class SurvivorApp {
       this.lastRunToken = store.runToken;
       renderer.clear();
       this.accMs = 0;
+      this.zoomFactor = 1;
+      this.applyView(true);
     }
     if (!engine) {
       renderer.root.visible = false;
       return;
     }
     renderer.root.visible = true;
+    const targetZoom = ringZoomFactor(engine.rings);
+    if (this.zoomFactor !== targetZoom) {
+      const stepZ = (ZOOM_EASE_PER_SEC * Math.min(100, deltaMs)) / 1000;
+      this.zoomFactor =
+        this.zoomFactor > targetZoom ? Math.max(targetZoom, this.zoomFactor - stepZ) : Math.min(targetZoom, this.zoomFactor + stepZ);
+      this.applyView();
+    }
     engine.setSpawnRadius(Math.hypot(this.viewW, this.viewH) / 2 + 28);
 
     const running = engine.phase === 'RUNNING' && !store.paused;

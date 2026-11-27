@@ -25,7 +25,7 @@ export const STYLE_LABEL: Record<AttackStyle, string> = {
   PULSE: '파동',
   HEAL: '치유',
   CHAIN: '연쇄',
-  MINE: '설치',
+  TURRET: '포탑',
 };
 
 export function formatTime(sec: number): string {

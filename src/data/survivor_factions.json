@@ -41,7 +41,7 @@
         "title": "입문 · 사격 특화",
         "passive": "GUNNERY",
         "passiveName": "화력 통제",
-        "passiveDesc": "사격·관통형 분대의 공격 속도 +8%.",
+        "passiveDesc": "사격·관통형 분대 관통 +1. 지휘관 사격이 맞힌 적에 3초간 [표적 표식]: 받는 피해 +25%.",
         "startingSquad": "ic_rifle"
       },
       {
@@ -61,10 +61,10 @@
           "projectileSpeed": 260
         },
         "sprite": "COMMANDER",
-        "title": "거점 · 설치 특화",
+        "title": "거점 · 포탑 특화",
         "passive": "FORTIFY",
-        "passiveName": "신속 축성",
-        "passiveDesc": "포진 발동 대기 0.5초→0.2초. 포진 중 지뢰·연쇄 번개 피해 +40%.",
+        "passiveName": "전술 거점화",
+        "passiveDesc": "포진 대기 0.5초→0.15초. 포진 중 포탑·테슬라 공격 속도 +50%(과충전), 아군에게 보호막(최대 체력 30%)을 초당 충전.",
         "startingSquad": "ic_sapper",
         "paletteOverride": {
           "primary": "#6b8f5a",
@@ -91,8 +91,8 @@
         "sprite": "COMMANDER",
         "title": "기동 · 전방 특화",
         "passive": "VANGUARD",
-        "passiveName": "돌파 명령",
-        "passiveDesc": "이동 중 지휘관 방향형 분대 피해 +40%. 지휘관 이동속도 +12%.",
+        "passiveName": "선봉 돌파",
+        "passiveDesc": "이동 중에도 [포진] 공격력 +35% 유지. 지휘관 이동속도 +15%. 전열 분대가 받는 피해 -25%.",
         "startingSquad": "ic_flamer",
         "paletteOverride": {
           "primary": "#b85a4f",
