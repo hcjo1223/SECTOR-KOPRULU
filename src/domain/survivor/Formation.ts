@@ -1,7 +1,7 @@
 import type { FormationRole, Vec2 } from './types';
 
-/** 링 간 간격(px). 1링 반지름 = RING_SPACING */
-export const RING_SPACING = 20;
+/** 링 간 간격(px). 1링 반지름 = RING_SPACING (32x32 스프라이트 대형 간격) */
+export const RING_SPACING = 26;
 export const MAX_RINGS = 3;
 
 /** k번째 링(1부터)의 슬롯 수: 6k */
