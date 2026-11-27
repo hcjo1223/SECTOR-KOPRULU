@@ -332,6 +332,8 @@ export interface EnemyState {
   lifeSec: number;
 }
 
+export type EnemyShotVisual = 'SPORE' | 'SPIKE' | 'PRISM' | 'ROYAL';
+
 export interface EnemyShotState {
   x: number;
   y: number;
@@ -343,6 +345,7 @@ export interface EnemyShotState {
   radius: number;
   lifeSec: number;
   color: string;
+  visual?: EnemyShotVisual;
   alive: boolean;
 }
 
@@ -360,6 +363,8 @@ export interface HazardState {
   color: string;
 }
 
+export type ProjectileVisual = 'RIFLE' | 'GATLING' | 'SNIPER' | 'EXECUTIONER' | 'MORTAR' | 'MLRS';
+
 export interface ProjectileState {
   id: number;
   x: number;
@@ -374,6 +379,8 @@ export interface ProjectileState {
   pierceLeft: number;
   splashRadiusPx: number;
   color: string;
+  visual?: ProjectileVisual;
+  evolved?: boolean;
   hitIds: number[];
   bonusVsElite: number;
   executePct: number;
@@ -389,7 +396,25 @@ export interface GemState {
   alive: boolean;
 }
 
-export type EffectKind = 'SLASH' | 'CONE' | 'PULSE' | 'HEAL' | 'BOOM' | 'DEATH' | 'LEVEL' | 'CHAIN' | 'EVOLVE' | 'TELE_LINE' | 'TELE_CIRCLE' | 'SHIELD_PULSE';
+export type EffectKind =
+  | 'SLASH'
+  | 'BASH'
+  | 'CONE'
+  | 'PULSE'
+  | 'HEAL'
+  | 'BOOM'
+  | 'DEATH'
+  | 'LEVEL'
+  | 'CHAIN'
+  | 'EVOLVE'
+  | 'TELE_LINE'
+  | 'TELE_CIRCLE'
+  | 'SHIELD_PULSE'
+  | 'HIT_SPARK'
+  | 'RAIL_TRAIL'
+  | 'EXECUTE'
+  | 'DEFLECT'
+  | 'REFLECT';
 
 export interface EffectState {
   kind: EffectKind;
@@ -403,6 +428,7 @@ export interface EffectState {
   lifeSec: number;
   maxLifeSec: number;
   color: string;
+  evolved?: boolean;
 }
 
 export interface ChestState {
@@ -421,6 +447,7 @@ export interface MineState {
   splashRadiusPx: number;
   burnDps: number;
   burnSec: number;
+  evolved?: boolean;
   alive: boolean;
 }
 
@@ -432,6 +459,7 @@ export interface ZoneState {
   dps: number;
   lifeSec: number;
   maxLifeSec: number;
+  kind?: 'FIRE' | 'PLASMA';
 }
 
 export interface HudSnapshot {

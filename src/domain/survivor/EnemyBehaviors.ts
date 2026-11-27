@@ -1,4 +1,4 @@
-import type { CommanderState, EffectKind, EnemyState, Vec2 } from './types';
+import type { CommanderState, EffectKind, EnemyShotVisual, EnemyState, Vec2 } from './types';
 
 /** 적 AI가 엔진에 요청할 수 있는 동작 */
 export interface EnemyAIContext {
@@ -7,7 +7,17 @@ export interface EnemyAIContext {
   /** (x, y)에서 가장 가까운 아군(지휘관·부대원)까지의 거리 */
   nearestAllyDist(x: number, y: number): number;
   spawnMinion(enemyId: string, x: number, y: number): EnemyState | null;
-  fireShot(x: number, y: number, dirX: number, dirY: number, speed: number, damage: number, radius: number, color: string): void;
+  fireShot(
+    x: number,
+    y: number,
+    dirX: number,
+    dirY: number,
+    speed: number,
+    damage: number,
+    radius: number,
+    color: string,
+    visual?: EnemyShotVisual
+  ): void;
   addHazard(x: number, y: number, radius: number, armSec: number, lifeSec: number, dps: number, burst: number, color: string): void;
   shieldEnemiesNear(x: number, y: number, radius: number, amount: number): void;
   effect(kind: EffectKind, x: number, y: number, radius: number, life: number, color: string, x2?: number, y2?: number): void;
@@ -66,11 +76,19 @@ function beginAim(e: EnemyState, ctx: EnemyAIContext, aimSec: number, length: nu
   ctx.effect('TELE_LINE', e.x, e.y, e.radius, aimSec, color, e.x + t.dx * length, e.y + t.dy * length);
 }
 
+function shotVisualFor(e: EnemyState): EnemyShotVisual {
+  if (e.def.sprite === 'PRISM') return 'PRISM';
+  if (e.def.sprite === 'SPITTER') return 'SPIKE';
+  if (e.def.sprite === 'MATRON' || e.def.sprite === 'COMMANDER') return 'ROYAL';
+  return 'SPORE';
+}
+
 function ringShots(e: EnemyState, ctx: EnemyAIContext, count: number, speed: number, damage: number, color: string): void {
   const offset = ctx.rng() * Math.PI * 2;
+  const vis = shotVisualFor(e);
   for (let i = 0; i < count; i += 1) {
     const a = offset + (i / count) * Math.PI * 2;
-    ctx.fireShot(e.x, e.y, Math.cos(a), Math.sin(a), speed, damage, 3, color);
+    ctx.fireShot(e.x, e.y, Math.cos(a), Math.sin(a), speed, damage, 3, color, vis);
   }
 }
 
@@ -116,7 +134,9 @@ export function stepEnemyAI(e: EnemyState, ctx: EnemyAIContext, dt: number): Vec
       e.attackTimer -= dt;
       if (e.attackTimer <= 0 && t.dist < 170) {
         e.attackTimer = 2.6;
-        ctx.fireShot(e.x, e.y, t.dx, t.dy, 95, e.damage, 3, e.def.palette.accent);
+        e.facingAngle = Math.atan2(t.dy, t.dx);
+        e.attackFlashSec = 0.21;
+        ctx.fireShot(e.x, e.y, t.dx, t.dy, 95, e.damage, 3, e.def.palette.accent, shotVisualFor(e));
       }
       if (t.dist > 130) {
         return chase(e, ctx);
@@ -151,6 +171,7 @@ export function stepEnemyAI(e: EnemyState, ctx: EnemyAIContext, dt: number): Vec
       e.spawnTimer -= dt;
       if (e.spawnTimer <= 0) {
         e.spawnTimer = 3.2;
+        e.attackFlashSec = 0.21;
         for (let i = 0; i < 2; i += 1) {
           const a = ctx.rng() * Math.PI * 2;
           ctx.spawnMinion(e.def.minionId ?? 'mite', e.x + Math.cos(a) * (e.radius + 6), e.y + Math.sin(a) * (e.radius + 6));
@@ -189,6 +210,7 @@ export function stepEnemyAI(e: EnemyState, ctx: EnemyAIContext, dt: number): Vec
       e.spawnTimer -= dt;
       if (e.attackTimer <= 0) {
         e.attackTimer = 2.4;
+        e.attackFlashSec = 0.21;
         const count = Math.min(26, 10 + Math.floor(e.ageSec / 20) * 3);
         ringShots(e, ctx, count, 70, e.damage, e.def.palette.accent);
       }
@@ -221,6 +243,7 @@ export function stepEnemyAI(e: EnemyState, ctx: EnemyAIContext, dt: number): Vec
       }
       if (phase === 3 && e.modeSec <= 0) {
         e.modeSec = 3;
+        e.attackFlashSec = 0.21;
         ringShots(e, ctx, 14, 80, 12, '#ffd040');
       }
       return chase(e, ctx, phase === 3 ? 1.6 : 1);

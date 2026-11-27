@@ -25,6 +25,7 @@ import type {
   ModuleId,
   ModuleState,
   ProjectileState,
+  ProjectileVisual,
   RunPhase,
   SquadMemberState,
   SquadState,
@@ -790,6 +791,7 @@ export class SurvivorEngine {
   /** @returns 실제로 공격이 발동했는지 */
   private performSquadAttack(m: SquadMemberState, a: AttackProfile, dmg: number, range: number): boolean {
     const color = this.paletteFor(m.def).accent;
+    const evolved = !!m.def.evolved;
     const areaMul = 1 + 0.1 * this.moduleLevel('AREA');
     const extra = Math.ceil(this.moduleLevel('MAGAZINE') / 2);
     switch (a.style) {
@@ -800,7 +802,7 @@ export class SurvivorEngine {
         }
         target.hp = Math.min(target.maxHp, target.hp + dmg);
         m.facingAngle = Math.atan2(target.y - m.y, target.x - m.x);
-        this.addEffect('HEAL', target.x, target.y, 0, 8, 0, 0.35, '#7cf2a0');
+        this.addEffect('HEAL', target.x, target.y, 0, 8, 0, 0.35, evolved ? '#ffe070' : '#7cf2a0', m.x, m.y, evolved);
         return true;
       }
       case 'PULSE': {
@@ -811,7 +813,7 @@ export class SurvivorEngine {
         }
         m.facingAngle = Math.atan2(nearest.y - m.y, nearest.x - m.x);
         this.damageEnemiesInRadius(m.x, m.y, r, dmg);
-        this.addEffect('PULSE', m.x, m.y, 0, r, 0, 0.3, color);
+        this.addEffect('PULSE', m.x, m.y, 0, r, 0, 0.3, color, m.x, m.y, evolved);
         return true;
       }
       case 'MELEE': {
@@ -828,7 +830,10 @@ export class SurvivorEngine {
         }
         m.facingX = target.x >= m.x ? 1 : -1;
         m.facingAngle = ang;
-        this.addEffect('SLASH', (m.x + target.x) / 2, (m.y + target.y) / 2, ang, 8, 0, 0.15, '#f4f4f4');
+        const isShielder = m.def.sprite === 'SHIELDER';
+        const fxKind: EffectKind = isShielder ? 'BASH' : 'SLASH';
+        const fxColor = evolved ? '#ffcf4a' : isShielder ? '#6eeeff' : m.def.sprite === 'CLAW' ? '#b8ee40' : '#f4f4f4';
+        this.addEffect(fxKind, (m.x + target.x) / 2, (m.y + target.y) / 2, ang, isShielder ? 11 : 8, 0, 0.18, fxColor, target.x, target.y, evolved);
         return true;
       }
       case 'CONE': {
@@ -843,11 +848,18 @@ export class SurvivorEngine {
           return false;
         }
         if (a.burnDps && hits > 0) {
-          this.addZone(m.x + aimX * r * 0.65, m.y + aimY * r * 0.65, r * 0.45, a.burnDps * (dmg / a.damage), a.burnSec ?? 2);
+          this.addZone(
+            m.x + aimX * r * 0.65,
+            m.y + aimY * r * 0.65,
+            r * 0.45,
+            a.burnDps * (dmg / a.damage),
+            a.burnSec ?? 2,
+            evolved ? 'PLASMA' : 'FIRE'
+          );
         }
         m.facingX = aimX >= 0 ? 1 : -1;
         m.facingAngle = Math.atan2(aimY, aimX);
-        this.addEffect('CONE', m.x, m.y, Math.atan2(aimY, aimX), r, half, 0.2, color);
+        this.addEffect('CONE', m.x, m.y, Math.atan2(aimY, aimX), r, half, 0.22, evolved ? '#6eeeff' : color, m.x, m.y, evolved);
         return true;
       }
       case 'PROJECTILE':
@@ -862,9 +874,47 @@ export class SurvivorEngine {
         const spread = ((a.spreadDeg ?? 9) * Math.PI) / 180;
         const base = Math.atan2(aimY, aimX);
         const splashA: AttackProfile = a.splashRadiusPx ? { ...a, splashRadiusPx: a.splashRadiusPx * areaMul } : a;
+        const visual: ProjectileVisual =
+          m.def.id === 'ic_gatling'
+            ? 'GATLING'
+            : m.def.id === 'ic_sniper'
+              ? 'SNIPER'
+              : m.def.id === 'ic_executioner'
+                ? 'EXECUTIONER'
+                : m.def.id === 'ic_mortar'
+                  ? 'MORTAR'
+                  : m.def.id === 'ic_mlrs'
+                    ? 'MLRS'
+                    : 'RIFLE';
+        const projCol =
+          visual === 'EXECUTIONER'
+            ? '#ff3858'
+            : visual === 'SNIPER'
+              ? '#ffe068'
+              : visual === 'MLRS'
+                ? '#ffcf4a'
+                : color;
         for (let k = 0; k < shots; k += 1) {
           const ang = base + (k - (shots - 1) / 2) * spread;
-          this.spawnProjectile(m.x, m.y, Math.cos(ang), Math.sin(ang), splashA, dmg, range, color);
+          const dx = Math.cos(ang);
+          const dy = Math.sin(ang);
+          this.spawnProjectile(m.x, m.y, dx, dy, splashA, dmg, range, projCol, visual, evolved);
+          if (visual === 'SNIPER' || visual === 'EXECUTIONER') {
+            const trailLen = Math.min(range * 0.65, visual === 'EXECUTIONER' ? 96 : 68);
+            this.addEffect(
+              'RAIL_TRAIL',
+              m.x + dx * 8,
+              m.y + dy * 8,
+              ang,
+              visual === 'EXECUTIONER' ? 10 : 7,
+              0,
+              0.2,
+              projCol,
+              m.x + dx * trailLen,
+              m.y + dy * trailLen,
+              evolved
+            );
+          }
         }
         return true;
       }
@@ -880,10 +930,11 @@ export class SurvivorEngine {
         let fromX = m.x;
         let fromY = m.y;
         let cur: EnemyState | null = first;
+        const chainCol = evolved ? '#c070ff' : '#9fe8ff';
         for (let k = 0; k <= jumps && cur; k += 1) {
           this.damageEnemy(cur, dmg, a.bonusVsElite ?? 1, 0, fromX, fromY);
           hit.push(cur.id);
-          this.addEffect('CHAIN', fromX, fromY, 0, 0, 0, 0.18, '#9fe8ff', cur.x, cur.y);
+          this.addEffect('CHAIN', fromX, fromY, 0, 0, 0, evolved ? 0.22 : 0.18, chainCol, cur.x, cur.y, evolved);
           fromX = cur.x;
           fromY = cur.y;
           cur = this.findNearestExcluding(fromX, fromY, jumpR, hit);
@@ -903,6 +954,7 @@ export class SurvivorEngine {
           splashRadiusPx: (a.splashRadiusPx ?? 24) * areaMul,
           burnDps: a.burnDps ? a.burnDps * (dmg / a.damage) : 0,
           burnSec: a.burnSec ?? 0,
+          evolved,
           alive: true,
         });
         return true;
@@ -1160,12 +1212,25 @@ export class SurvivorEngine {
         return best;
       },
       spawnMinion: (id, x, y) => (this.enemies.length < this.waves.maxEnemies + 80 ? this.spawnEnemy(id, x, y, false, false) : null),
-      fireShot: (x, y, dx, dy, speed, damage, radius, color) => {
+      fireShot: (x, y, dx, dy, speed, damage, radius, color, visual) => {
         if (this.enemyShots.length >= MAX_ENEMY_SHOTS) {
           return;
         }
         const l = Math.hypot(dx, dy) || 1;
-        this.enemyShots.push({ x, y, px: x, py: y, vx: (dx / l) * speed, vy: (dy / l) * speed, damage, radius, lifeSec: 4, color, alive: true });
+        this.enemyShots.push({
+          x,
+          y,
+          px: x,
+          py: y,
+          vx: (dx / l) * speed,
+          vy: (dy / l) * speed,
+          damage,
+          radius,
+          lifeSec: 4,
+          color,
+          visual,
+          alive: true,
+        });
       },
       addHazard: (x, y, r, arm, life, dps, burst, color) => this.addHazard(x, y, r, arm, life, dps, burst, color),
       shieldEnemiesNear: (x, y, r, amount) => {
@@ -1243,6 +1308,9 @@ export class SurvivorEngine {
         const dy = a.y - p.y;
         if (dx * dx + dy * dy <= r * r) {
           this.damageAlly(a, p.damage);
+          if (this.effects.length < MAX_EFFECTS - 30) {
+            this.addEffect('HIT_SPARK', p.x, p.y, Math.atan2(p.vy, p.vx), 6, 0, 0.14, p.color);
+          }
           return true;
         }
         return false;
@@ -1388,8 +1456,25 @@ export class SurvivorEngine {
     }
     this.damageAlly(a, e.damage);
     e.attackFlashSec = ATTACK_RELEASE_SEC;
+    const biteAng = Math.atan2(a.y - e.y, a.x - e.x);
+    if (this.effects.length < MAX_EFFECTS - 30) {
+      this.addEffect('HIT_SPARK', (a.x + e.x) / 2, (a.y + e.y) / 2, biteAng, 6, 0, 0.14, '#ff4848');
+    }
     if (e.windupReflectPct > 0) {
       this.damageEnemy(e, e.damage * e.windupReflectPct, 1, 0);
+      this.addEffect(
+        'REFLECT',
+        (a.x + e.x) / 2,
+        (a.y + e.y) / 2,
+        Math.atan2(e.y - a.y, e.x - a.x),
+        12,
+        0,
+        0.24,
+        '#ffcf4a',
+        e.x,
+        e.y,
+        true
+      );
     }
   }
 
@@ -1477,7 +1562,9 @@ export class SurvivorEngine {
     a: AttackProfile,
     damage: number,
     range: number,
-    color: string
+    color: string,
+    visual: ProjectileVisual = 'RIFLE',
+    evolved = false
   ): void {
     const d = Math.hypot(dirX, dirY) || 1;
     const speed = a.projectileSpeed ?? 250;
@@ -1495,6 +1582,8 @@ export class SurvivorEngine {
       pierceLeft: a.style === 'PIERCE' ? a.pierce ?? 1 : 0,
       splashRadiusPx: a.splashRadiusPx ?? 0,
       color,
+      visual,
+      evolved,
       hitIds: [],
       bonusVsElite: a.bonusVsElite ?? 1,
       executePct: a.executePct ?? 0,
@@ -1523,11 +1612,27 @@ export class SurvivorEngine {
           continue;
         }
         if (p.splashRadiusPx > 0) {
-          this.explode(p.x, p.y, p.splashRadiusPx, p.damage, 0, 0);
+          this.explode(p.x, p.y, p.splashRadiusPx, p.damage, 0, 0, p.evolved);
           p.alive = false;
           break;
         }
         this.damageEnemy(e, p.damage, p.bonusVsElite, p.executePct, p.px, p.py);
+        const isHeavy = p.visual === 'SNIPER' || p.visual === 'EXECUTIONER';
+        if (isHeavy || this.effects.length < MAX_EFFECTS - 40) {
+          this.addEffect(
+            'HIT_SPARK',
+            p.x,
+            p.y,
+            Math.atan2(p.vy, p.vx),
+            isHeavy ? 10 : 6,
+            0,
+            isHeavy ? 0.18 : 0.11,
+            p.color,
+            e.x,
+            e.y,
+            p.evolved
+          );
+        }
         p.hitIds.push(e.id);
         p.pierceLeft -= 1;
         if (p.pierceLeft < 0) {
@@ -1537,7 +1642,7 @@ export class SurvivorEngine {
 
       if (p.alive && p.lifeSec <= 0) {
         if (p.splashRadiusPx > 0) {
-          this.explode(p.x, p.y, p.splashRadiusPx, p.damage, 0, 0);
+          this.explode(p.x, p.y, p.splashRadiusPx, p.damage, 0, 0, p.evolved);
         }
         p.alive = false;
       }
@@ -1548,11 +1653,11 @@ export class SurvivorEngine {
     this.projectiles.length = w;
   }
 
-  private explode(x: number, y: number, r: number, dmg: number, burnDps: number, burnSec: number): void {
+  private explode(x: number, y: number, r: number, dmg: number, burnDps: number, burnSec: number, evolved = false): void {
     this.damageEnemiesInRadius(x, y, r, dmg);
-    this.addEffect('BOOM', x, y, 0, r, 0, 0.3, '#ffb347');
+    this.addEffect('BOOM', x, y, 0, r, 0, 0.34, evolved ? '#ffcf4a' : '#ffb347', x, y, evolved);
     if (burnDps > 0) {
-      this.addZone(x, y, r * 0.8, burnDps, burnSec);
+      this.addZone(x, y, r * 0.8, burnDps, burnSec, evolved ? 'PLASMA' : 'FIRE');
     }
   }
 
@@ -1562,7 +1667,7 @@ export class SurvivorEngine {
       const mine = this.mines[i];
       mine.armSec -= dt;
       if (mine.armSec <= 0 && this.findNearestEnemy(mine.x, mine.y, MINE_TRIGGER_PX)) {
-        this.explode(mine.x, mine.y, mine.splashRadiusPx, mine.damage, mine.burnDps, mine.burnSec);
+        this.explode(mine.x, mine.y, mine.splashRadiusPx, mine.damage, mine.burnDps, mine.burnSec, mine.evolved);
         mine.alive = false;
       }
       if (mine.alive) {
@@ -1572,11 +1677,11 @@ export class SurvivorEngine {
     this.mines.length = w;
   }
 
-  private addZone(x: number, y: number, radius: number, dps: number, life: number): void {
+  private addZone(x: number, y: number, radius: number, dps: number, life: number, kind: 'FIRE' | 'PLASMA' = 'FIRE'): void {
     if (this.zones.length >= MAX_ZONES) {
       this.zones.shift();
     }
-    this.zones.push({ x, y, radius, dps, lifeSec: life, maxLifeSec: life });
+    this.zones.push({ x, y, radius, dps, lifeSec: life, maxLifeSec: life, kind });
   }
 
   private updateZones(dt: number): void {
@@ -1617,7 +1722,11 @@ export class SurvivorEngine {
     if (e.auraBuffed) {
       amount *= 0.7;
     }
-    amount *= shellReduction(e, this.commander, srcX, srcY);
+    const shellMul = shellReduction(e, this.commander, srcX, srcY);
+    amount *= shellMul;
+    if (shellMul < 1 && this.effects.length < MAX_EFFECTS - 30) {
+      this.addEffect('DEFLECT', e.x, e.y, Math.atan2(srcY - e.y, srcX - e.x), 8, 0, 0.16, '#c8d6e8');
+    }
     e.sinceHitSec = 0;
     if (e.shield > 0) {
       const absorbed = Math.min(e.shield, amount);
@@ -1628,6 +1737,7 @@ export class SurvivorEngine {
     e.hitFlashSec = 0.1;
     if (executePct > 0 && !e.isBoss && e.hp > 0 && e.hp / e.maxHp <= executePct) {
       e.hp = 0;
+      this.addEffect('EXECUTE', e.x, e.y, 0, e.radius + 9, 0, 0.3, '#ff3858', e.x, e.y, true);
     }
     if (e.hp <= 0) {
       e.alive = false;
@@ -1903,12 +2013,13 @@ export class SurvivorEngine {
     life: number,
     color: string,
     x2 = x,
-    y2 = y
+    y2 = y,
+    evolved = false
   ): void {
     if (this.effects.length >= MAX_EFFECTS) {
       this.effects.shift();
     }
-    this.effects.push({ kind, x, y, x2, y2, angle, radius, halfAngle, lifeSec: life, maxLifeSec: life, color });
+    this.effects.push({ kind, x, y, x2, y2, angle, radius, halfAngle, lifeSec: life, maxLifeSec: life, color, evolved });
   }
 
   private updateEffects(dt: number): void {

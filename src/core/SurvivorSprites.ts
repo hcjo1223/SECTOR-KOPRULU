@@ -1,4 +1,4 @@
-import type { FactionPalette, SpriteArchetype } from '../domain/survivor/types';
+import type { EnemyShotVisual, FactionPalette, ProjectileVisual, SpriteArchetype } from '../domain/survivor/types';
 
 /**
  * 서바이벌 모드 32x32 8방향(8-Dir) · 다중 상태(IDLE / WALK / ATTACK) 클러스터 픽셀 스프라이트 엔진.
@@ -6,9 +6,12 @@ import type { FactionPalette, SpriteArchetype } from '../domain/survivor/types';
  *   1) IMG_2485.png (256x32, 8방향 IDLE 턴테이블: S, SE, E, NE, N, NW, W, SW)
  *   2) IMG_2486.png (256x32, 8방향 ATTACK 사격 턴테이블: S, SE, E, NE, N, NW, W, SW)
  * - 8방향('S' | 'SE' | 'E' | 'NE' | 'N' | 'NW' | 'W' | 'SW') 원본 픽셀 턴테이블과
- *   대기(IDLE, 2프레임 호흡) · 이동(WALK, 4프레임 보행) · 공격(ATTACK, 2프레임 사격/참격/방사) 애니메이션을 전 유닛 20종에 적용한다.
+ *   대기(IDLE, 2프레임 호흡) · 이동(WALK, 4프레임 보행) · 공격(ATTACK, 4프레임 예비동작/발사/반동/복귀) 애니메이션을 적용한다.
+ * - 유닛 본체(body)는 32x32 규격을 유지하고, 이펙트 레이어(fx)는 48x48(사방 8px 확장 여백)로 렌더링해 총구 섬광·참격·저격선이 잘리지 않는다.
  */
 export const SPRITE_SIZE = 32;
+export const SPRITE_FX_SIZE = 48;
+export const SPRITE_FX_PAD = (SPRITE_FX_SIZE - SPRITE_SIZE) / 2;
 
 export type Rgb = [number, number, number];
 
@@ -247,23 +250,27 @@ function dir8Vector(dir: SpriteDir8): { dx: number; dy: number } {
 
 class SculptCanvas32 {
   public readonly size = SPRITE_SIZE;
-  /** 유닛 몸 레이어 (스프라이트 시트에 들어가는 픽셀) */
+  public readonly fxSize = SPRITE_FX_SIZE;
+  /** 유닛 몸 레이어 (스프라이트 시트에 들어가는 32x32 픽셀) */
   public readonly body = new Uint8ClampedArray(SPRITE_SIZE * SPRITE_SIZE * 4);
-  /** 이펙트 레이어 (총구 섬광·번개·흙먼지 등): 몸 프레임과 분리해 크기·중심점을 고정한다 */
-  public readonly fx = new Uint8ClampedArray(SPRITE_SIZE * SPRITE_SIZE * 4);
+  /** 이펙트 레이어 (48x48, 사방 8px 확장 여백): 총구 섬광·참격·저격선이 잘리지 않으며 몸 중심점을 고정한다 */
+  public readonly fx = new Uint8ClampedArray(SPRITE_FX_SIZE * SPRITE_FX_SIZE * 4);
   private target: Uint8ClampedArray = this.body;
+  private isFxTarget = false;
 
   public get data(): Uint8ClampedArray {
     return this.target;
   }
 
-  /** 이후 그리기를 이펙트 레이어로 보낸다 */
+  /** 이후 그리기를 48x48 이펙트 레이어로 보낸다 (좌표계는 32x32 기준 -8..39까지 허용) */
   public fxBegin(): void {
     this.target = this.fx;
+    this.isFxTarget = true;
   }
 
   public fxEnd(): void {
     this.target = this.body;
+    this.isFxTarget = false;
   }
 
   public inBounds(x: number, y: number): boolean {
@@ -278,29 +285,55 @@ class SculptCanvas32 {
   }
 
   public px(x: number, y: number, c: Rgb): void {
+    if (this.isFxTarget) {
+      const ix = Math.round(x) + SPRITE_FX_PAD;
+      const iy = Math.round(y) + SPRITE_FX_PAD;
+      if (ix < 0 || ix >= this.fxSize || iy < 0 || iy >= this.fxSize) {
+        return;
+      }
+      const i = (iy * this.fxSize + ix) * 4;
+      this.fx[i] = c[0];
+      this.fx[i + 1] = c[1];
+      this.fx[i + 2] = c[2];
+      this.fx[i + 3] = 255;
+      return;
+    }
     const ix = Math.round(x);
     const iy = Math.round(y);
     if (!this.inBounds(ix, iy)) {
       return;
     }
     const i = (iy * this.size + ix) * 4;
-    this.data[i] = c[0];
-    this.data[i + 1] = c[1];
-    this.data[i + 2] = c[2];
-    this.data[i + 3] = 255;
+    this.body[i] = c[0];
+    this.body[i + 1] = c[1];
+    this.body[i + 2] = c[2];
+    this.body[i + 3] = 255;
   }
 
   public clearPx(x: number, y: number): void {
+    if (this.isFxTarget) {
+      const ix = Math.round(x) + SPRITE_FX_PAD;
+      const iy = Math.round(y) + SPRITE_FX_PAD;
+      if (ix < 0 || ix >= this.fxSize || iy < 0 || iy >= this.fxSize) {
+        return;
+      }
+      const i = (iy * this.fxSize + ix) * 4;
+      this.fx[i] = 0;
+      this.fx[i + 1] = 0;
+      this.fx[i + 2] = 0;
+      this.fx[i + 3] = 0;
+      return;
+    }
     const ix = Math.round(x);
     const iy = Math.round(y);
     if (!this.inBounds(ix, iy)) {
       return;
     }
     const i = (iy * this.size + ix) * 4;
-    this.data[i] = 0;
-    this.data[i + 1] = 0;
-    this.data[i + 2] = 0;
-    this.data[i + 3] = 0;
+    this.body[i] = 0;
+    this.body[i + 1] = 0;
+    this.body[i + 2] = 0;
+    this.body[i + 3] = 0;
   }
 
   public symPx(x: number, y: number, c: Rgb): void {
@@ -597,45 +630,81 @@ class SculptCanvas32 {
     dirX: number,
     dirY: number,
     f: number,
-    theme: 'FIRE' | 'ACID' | 'CYAN' | 'CRIMSON' = 'FIRE'
+    theme: 'FIRE' | 'PLASMA' | 'GOLD' | 'ACID' | 'CYAN' | 'CRIMSON' = 'FIRE'
   ): void {
+    const getThemeColors = (): { core: Rgb; bright: Rgb; mid: Rgb; outer: Rgb; smoke: Rgb } => {
+      switch (theme) {
+        case 'PLASMA':
+          return {
+            core: [255, 255, 255],
+            bright: [224, 255, 255],
+            mid: [110, 238, 255],
+            outer: [255, 207, 74],
+            smoke: [48, 86, 128],
+          };
+        case 'GOLD':
+          return {
+            core: [255, 255, 255],
+            bright: [255, 248, 176],
+            mid: [255, 207, 74],
+            outer: [242, 140, 36],
+            smoke: [78, 62, 48],
+          };
+        case 'ACID':
+          return {
+            core: [255, 255, 255],
+            bright: [242, 255, 175],
+            mid: [184, 238, 64],
+            outer: [88, 168, 28],
+            smoke: [42, 74, 24],
+          };
+        case 'CYAN':
+          return {
+            core: [255, 255, 255],
+            bright: [215, 254, 255],
+            mid: [95, 224, 255],
+            outer: [32, 136, 204],
+            smoke: [22, 64, 98],
+          };
+        case 'CRIMSON':
+          return {
+            core: [255, 255, 255],
+            bright: [255, 224, 195],
+            mid: [255, 96, 82],
+            outer: [178, 28, 46],
+            smoke: [68, 24, 32],
+          };
+        default:
+          return {
+            core: [255, 255, 255],
+            bright: [252, 246, 132],
+            mid: [252, 232, 86],
+            outer: [235, 119, 36],
+            smoke: [76, 56, 52],
+          };
+      }
+    };
+
+    const tc = getThemeColors();
     const mapColor = (ch: string): Rgb | null => {
       if (ch === '.' || (f % 2 === 1 && ch === 'Z')) {
         return null;
       }
       if (ch === '@' || ch === '^') {
-        return [255, 255, 255];
+        return f % 2 === 0 ? tc.core : tc.bright;
       }
-      if (theme === 'ACID') {
-        return ch === '$' || ch === '#'
-          ? [242, 255, 175]
-          : ch === '!' || ch === '%'
-            ? [184, 238, 64]
-            : [88, 168, 28];
+      if (ch === '$' || ch === '#') {
+        return f % 2 === 0 ? tc.bright : tc.mid;
       }
-      if (theme === 'CYAN') {
-        return ch === '$' || ch === '#'
-          ? [215, 254, 255]
-          : ch === '!' || ch === '%'
-            ? [95, 224, 255]
-            : [32, 136, 204];
+      if (ch === '!' || ch === '%') {
+        return f % 2 === 0 ? tc.mid : tc.outer;
       }
-      if (theme === 'CRIMSON') {
-        return ch === '$' || ch === '#'
-          ? [255, 224, 195]
-          : ch === '!' || ch === '%'
-            ? [255, 96, 82]
-            : [178, 28, 46];
-      }
-      return ch === '$' || ch === '#'
-        ? [252, 246, 132]
-        : ch === '!' || ch === '%'
-          ? [252, 232, 86]
-          : [235, 119, 36];
+      return tc.outer;
     };
 
     const prev = this.target;
-    this.target = this.fx;
+    const prevFlag = this.isFxTarget;
+    this.fxBegin();
     const targetAng = Math.atan2(dirY, dirX);
     const refAng = Math.PI / 4;
     const dAng = targetAng - refAng;
@@ -657,7 +726,231 @@ class SculptCanvas32 {
         }
       }
     }
+
+    const perpX = -dirY;
+    const perpY = dirX;
+    if (f % 2 === 0) {
+      // Stage 1 (발사 순간): 전방 집중 예광 스파이크 (48x48 여백까지 뻗음) + 좌우 십자 머즐 브레이크 제트
+      for (let s = 3; s <= 7; s += 1) {
+        this.px(cx + dirX * s, cy + dirY * s, s <= 5 ? tc.core : tc.bright);
+      }
+      for (const side of [-1, 1]) {
+        this.px(cx + dirX * 2 + perpX * side * 3, cy + dirY * 2 + perpY * side * 3, tc.bright);
+        this.px(cx + dirX * 2 + perpX * side * 4, cy + dirY * 2 + perpY * side * 4, tc.mid);
+      }
+    } else {
+      // Stage 2 (반동 순간): 전방 확산 잔열/연기 퍼프 + 옆으로 튀는 황동 탄피/스파크 픽셀
+      for (const side of [-1, 1]) {
+        const sx = cx + dirX * 5 + perpX * side * 3;
+        const sy = cy + dirY * 5 + perpY * side * 3;
+        this.px(sx, sy, tc.smoke);
+        this.px(sx + dirX, sy + dirY, tc.outer);
+      }
+      this.px(cx + dirX * 7, cy + dirY * 7, tc.mid);
+      this.px(cx + dirX * 8, cy + dirY * 8, tc.smoke);
+      // 약실 방향 탄피/스파크 배출
+      const shellX = cx - dirX * 3 + perpX * 4;
+      const shellY = cy - dirY * 3 + perpY * 4 - 2;
+      this.px(shellX, shellY, [255, 224, 120]);
+      this.px(shellX - perpX, shellY + 1, [204, 152, 52]);
+    }
+
     this.target = prev;
+    this.isFxTarget = prevFlag;
+  }
+
+  /** 방패 분대 / 성벽 분대 전용: 타워 실드 전방 이중 충격파 판 + 파쇄 스파크 */
+  public stampShieldBash(cx: number, cy: number, dirX: number, dirY: number, f: number, evolved = false): void {
+    const prev = this.target;
+    const prevFlag = this.isFxTarget;
+    this.fxBegin();
+    const perpX = -dirY;
+    const perpY = dirX;
+    const mainCol: Rgb = evolved ? [255, 207, 74] : [95, 224, 255];
+    const subCol: Rgb = evolved ? [242, 140, 36] : [32, 136, 204];
+    const coreCol: Rgb = [255, 255, 255];
+    const push = f % 2 === 0 ? 0 : 2;
+
+    for (let u = -6; u <= 6; u += 1) {
+      const curve = Math.round((1 - (u / 6.5) ** 2) * 3.5) + push;
+      const ax = cx + perpX * u + dirX * curve;
+      const ay = cy + perpY * u + dirY * curve;
+      this.px(ax, ay, Math.abs(u) <= 3 ? coreCol : mainCol);
+      this.px(ax - dirX, ay - dirY, mainCol);
+      if (f % 2 === 0 && Math.abs(u) <= 4) {
+        this.px(ax + dirX, ay + dirY, subCol);
+      }
+    }
+    // 전방 파쇄 스파크 3갈래
+    for (const k of [-3, 0, 3]) {
+      const sx = cx + perpX * k * 1.3 + dirX * (5 + push + (k === 0 ? 2 : 0));
+      const sy = cy + perpY * k * 1.3 + dirY * (5 + push + (k === 0 ? 2 : 0));
+      this.px(sx, sy, f % 2 === 0 ? coreCol : mainCol);
+      if (f % 2 === 1) {
+        this.px(sx + dirX, sy + dirY, subCol);
+      }
+    }
+    this.target = prev;
+    this.isFxTarget = prevFlag;
+  }
+
+  /** 수리 드론 / 보급 드론 전용: 나노 수리 파동 링 + 의무 십자(+) 도트 */
+  public stampNanoHeal(cx: number, cy: number, dirX: number, dirY: number, f: number, evolved = false): void {
+    const prev = this.target;
+    const prevFlag = this.isFxTarget;
+    this.fxBegin();
+    const main: Rgb = evolved ? [255, 224, 112] : [92, 242, 156];
+    const sub: Rgb = evolved ? [92, 242, 156] : [36, 176, 112];
+    const white: Rgb = [255, 255, 255];
+
+    const r = f % 2 === 0 ? 3 : 5;
+    for (let k = 0; k < 8; k += 1) {
+      const a = (k / 8) * Math.PI * 2;
+      this.px(cx + Math.cos(a) * r, cy + Math.sin(a) * r, k % 2 === 0 ? main : sub);
+    }
+    // 미니 의무 십자(+) 2개
+    const c1x = Math.round(cx + dirX * (3 + f * 2));
+    const c1y = Math.round(cy + dirY * (3 + f * 2) - 2);
+    for (const [ox, oy] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+      this.px(c1x + ox, c1y + oy, ox === 0 && oy === 0 ? white : main);
+    }
+    this.target = prev;
+    this.isFxTarget = prevFlag;
+  }
+
+  /** 갈퀴충 · 껍질갑충 · 파쇄 여왕 전용: 3갈래 초승달 발톱 할퀴기 궤적 */
+  public stampClawSlash(
+    cx: number,
+    cy: number,
+    dirX: number,
+    dirY: number,
+    f: number,
+    theme: 'ACID' | 'CRIMSON' | 'GOLD' = 'ACID'
+  ): void {
+    const prev = this.target;
+    const prevFlag = this.isFxTarget;
+    this.fxBegin();
+    const perpX = -dirY;
+    const perpY = dirX;
+    const bright: Rgb =
+      theme === 'CRIMSON' ? [255, 110, 96] : theme === 'GOLD' ? [255, 224, 112] : [192, 248, 72];
+    const dark: Rgb =
+      theme === 'CRIMSON' ? [168, 24, 42] : theme === 'GOLD' ? [196, 112, 24] : [74, 156, 24];
+    const white: Rgb = [255, 255, 255];
+
+    for (const lane of [-3.5, 0, 3.5]) {
+      for (let s = -4; s <= 4; s += 1) {
+        if (f % 2 === 1 && s < -1) continue;
+        const arc = (1 - (s / 4.5) ** 2) * 3.5 + (f % 2 === 1 ? 1.5 : 0);
+        const px = cx + perpX * (lane + s * 0.85) + dirX * (arc + (lane === 0 ? 1.5 : 0));
+        const py = cy + perpY * (lane + s * 0.85) + dirY * (arc + (lane === 0 ? 1.5 : 0));
+        const col = s >= 2 ? white : s >= -1 ? bright : dark;
+        this.px(px, py, col);
+      }
+    }
+    this.target = prev;
+    this.isFxTarget = prevFlag;
+  }
+
+  /** 교단 수호기사(광휘검 초승달 검기) · 광선창병(관통 프리즘 창 찌르기 충격파) 전용 */
+  public stampBladeArc(
+    cx: number,
+    cy: number,
+    dirX: number,
+    dirY: number,
+    f: number,
+    mode: 'SWORD' | 'LANCE' = 'SWORD'
+  ): void {
+    const prev = this.target;
+    const prevFlag = this.isFxTarget;
+    this.fxBegin();
+    const perpX = -dirY;
+    const perpY = dirX;
+    const cyan: Rgb = [95, 224, 255];
+    const deep: Rgb = [32, 136, 204];
+    const gold: Rgb = [242, 208, 104];
+    const white: Rgb = [255, 255, 255];
+
+    if (mode === 'LANCE') {
+      // 전방 관통 광선창 찌르기 + V자 음속 충격파 고리
+      const reach = f % 2 === 0 ? 9 : 6;
+      for (let s = -2; s <= reach; s += 1) {
+        const px = cx + dirX * s;
+        const py = cy + dirY * s;
+        this.px(px, py, s >= reach - 2 ? white : cyan);
+        if (s >= 0 && s <= 4) {
+          this.px(px + perpX, py + perpY, s === 2 ? white : deep);
+          this.px(px - perpX, py - perpY, s === 2 ? white : deep);
+        }
+      }
+      for (const side of [-1, 1]) {
+        for (let w = 1; w <= 3; w += 1) {
+          this.px(cx + dirX * (2 - w) + perpX * side * (w + 1), cy + dirY * (2 - w) + perpY * side * (w + 1), w === 1 ? gold : cyan);
+        }
+      }
+    } else {
+      // 넓은 초승달 광휘 검기 호
+      for (let u = -7; u <= 7; u += 1) {
+        if (f % 2 === 1 && u < -3) continue;
+        const curve = (1 - (u / 7.5) ** 2) * 5.0 + (f % 2 === 1 ? 1.5 : 0);
+        const ax = cx + perpX * u + dirX * curve;
+        const ay = cy + perpY * u + dirY * curve;
+        this.px(ax + dirX, ay + dirY, Math.abs(u) <= 3 ? white : cyan);
+        this.px(ax, ay, Math.abs(u) <= 4 ? cyan : deep);
+        if (Math.abs(u) <= 5 && f % 2 === 0) {
+          this.px(ax - dirX, ay - dirY, gold);
+        }
+      }
+    }
+    this.target = prev;
+    this.isFxTarget = prevFlag;
+  }
+
+  /** 진드기 · 기어충 · 파쇄충 · 모체 · 분열충 · 갑각충 전용: 상하 이빨 맞물림(Bite Snap) + 타액 파편 */
+  public stampBiteSnap(
+    cx: number,
+    cy: number,
+    dirX: number,
+    dirY: number,
+    f: number,
+    theme: 'CRIMSON' | 'ACID' = 'CRIMSON'
+  ): void {
+    const prev = this.target;
+    const prevFlag = this.isFxTarget;
+    this.fxBegin();
+    const perpX = -dirY;
+    const perpY = dirX;
+    const bone: Rgb = [248, 244, 232];
+    const boneShade: Rgb = [196, 180, 156];
+    const blood: Rgb = theme === 'ACID' ? [184, 238, 64] : [236, 68, 72];
+    const darkBlood: Rgb = theme === 'ACID' ? [78, 152, 24] : [156, 20, 36];
+    const white: Rgb = [255, 255, 255];
+
+    if (f % 2 === 0) {
+      // Frame 0: 위아래 송곳니 턱이 양옆에서 안쪽으로 날카롭게 맞물림
+      for (const side of [-1, 1]) {
+        for (let t = 0; t <= 4; t += 1) {
+          const jx = cx + perpX * side * (4 - t * 0.7) + dirX * (t * 0.9);
+          const jy = cy + perpY * side * (4 - t * 0.7) + dirY * (t * 0.9);
+          this.px(jx, jy, t >= 3 ? white : t >= 1 ? bone : boneShade);
+        }
+        // 안쪽 보조 송곳니
+        this.px(cx + perpX * side * 2 + dirX * 2, cy + perpY * side * 2 + dirY * 2, bone);
+      }
+      this.px(cx + dirX * 3, cy + dirY * 3, blood);
+    } else {
+      // Frame 1: 맞물린 중심 크런치 십자 섬광 + 튀는 체액 방울
+      this.px(cx + dirX * 2, cy + dirY * 2, white);
+      for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+        this.px(cx + dirX * 2 + ox, cy + dirY * 2 + oy, blood);
+      }
+      for (const side of [-1, 1]) {
+        this.px(cx + dirX * 5 + perpX * side * 3, cy + dirY * 5 + perpY * side * 3, blood);
+        this.px(cx + dirX * 4 + perpX * side * 4, cy + dirY * 4 + perpY * side * 4, darkBlood);
+      }
+    }
+    this.target = prev;
+    this.isFxTarget = prevFlag;
   }
 
   public finalizeOutline(): void {
@@ -769,6 +1062,24 @@ function isRefFlameColor(idx: number): boolean {
   return (r >= 150 && r > g && g >= b && r - b >= 60) || (r > 240 && g > 240 && b > 200);
 }
 
+function isEvolvedPalette(palette: FactionPalette): boolean {
+  const pri = palette.primary.toLowerCase();
+  const acc = palette.accent.toLowerCase();
+  return pri === '#d8dde6' || acc === '#ffe070' || acc === '#ffcf4a';
+}
+
+/** 방향별 소총 총구 끝 좌표 (32x32 기준): 확장 예광·탄피·NW 섬광 스탬핑 기준점 */
+const RIFLE_MUZZLE_TIP: Readonly<Record<SpriteDir8, readonly [number, number]>> = {
+  S: [25, 25],
+  SE: [29, 23],
+  E: [29, 14],
+  NE: [27, 3],
+  N: [21, 1],
+  NW: [5, 3],
+  W: [2, 13],
+  SW: [3, 23],
+};
+
 /**
  * IMG_2485 / IMG_2486 8방향 원본 시트를 진영 팔레트로 찍는다 (정지 포즈).
  * 걷기·숨쉬기·반동 모션은 공용 애니메이터(planFrame)가 모든 아키타입에 동일하게 적용한다.
@@ -776,7 +1087,7 @@ function isRefFlameColor(idx: number): boolean {
 function stamp8DirSheet(
   c: SculptCanvas32,
   palette: FactionPalette,
-  _frame: number,
+  frame: number,
   dir: SpriteDir8,
   anim: SpriteAnim,
   yOffset: number = 0,
@@ -788,6 +1099,7 @@ function stamp8DirSheet(
   const useAtk = anim === 'ATTACK' && useAttackRifleSheet;
   const sheet = useAtk ? REF_ATK_8DIR_SHEET : REF_IDLE_8DIR_SHEET;
   const lut = buildRef8DirColorLut(palette, customEye);
+  const f = frame % 2;
 
   for (let y = 0; y < 32; y += 1) {
     const rowBase = y * 256 + sliceX;
@@ -798,12 +1110,43 @@ function stamp8DirSheet(
       }
       const box = useAtk ? REF_ATK_MUZZLE_BOX[dir] : null;
       if (box && x >= box[0] && x <= box[2] && y >= box[1] && y <= box[3] && isRefFlameColor(palIdx)) {
-        c.fxBegin();
-        c.px(x, y + yOffset, lut[palIdx]);
-        c.fxEnd();
+        // Frame 0(발사)에서는 원본 총구 화염 전체, Frame 1(반동)에서는 중심 잔광만 남기고 연기·탄피로 전환
+        if (f === 0 || (x + y) % 2 === 0) {
+          c.fxBegin();
+          c.px(x, y + yOffset, lut[palIdx]);
+          c.fxEnd();
+        }
         continue;
       }
       c.px(x, y + yOffset, lut[palIdx]);
+    }
+  }
+
+  if (useAtk) {
+    const { dx, dy } = dir8Vector(dir);
+    const [mx, my] = RIFLE_MUZZLE_TIP[dir];
+    const evolved = isEvolvedPalette(palette);
+    if (dir === 'NW' || evolved) {
+      // 누락되어 있던 NW 방향 총구 섬광 보완 & 개틀링 진화 시 황금 회전 총구 섬광 추가
+      c.stampMuzzleBlast(mx, my + yOffset, dx, dy, f, evolved ? 'GOLD' : 'FIRE');
+    } else {
+      // 48x48 여백으로 뻗는 전방 가우스 예광선(f=0) & 반동 연기·약실 탄피 배출(f=1)
+      c.fxBegin();
+      const perpX = -dy;
+      const perpY = dx;
+      if (f === 0) {
+        for (let s = 2; s <= 6; s += 1) {
+          c.px(mx + dx * s, my + yOffset + dy * s, s <= 4 ? [255, 255, 255] : [252, 232, 86]);
+        }
+      } else {
+        c.px(mx + dx * 4, my + yOffset + dy * 4, [235, 119, 36]);
+        c.px(mx + dx * 6, my + yOffset + dy * 6, [98, 95, 101]);
+        const sx = mx - dx * 4 + perpX * 3;
+        const sy = my + yOffset - dy * 4 + perpY * 3 - 2;
+        c.px(sx, sy, [254, 215, 90]);
+        c.px(sx - perpX, sy + 1, [192, 140, 69]);
+      }
+      c.fxEnd();
     }
   }
 }
@@ -900,10 +1243,10 @@ function drawFlamer32(
     c.symPartDome(9, 4, 3.0, 3.2, tankRamp, { trim: sp.trim, trimBottom: true });
   }
 
-  // 공격 시 조준 방향으로 대형 화염 방사!
+  // 공격 시 조준 방향으로 대형 화염 방사 (진화 소각 분대: 청백 플라즈마 고열 화염)!
   if (anim === 'ATTACK') {
     const { dx, dy } = dir8Vector(dir);
-    c.stampMuzzleBlast(16 + dx * 10, 18 + dy * 9, dx, dy, f, 'FIRE');
+    c.stampMuzzleBlast(16 + dx * 10, 18 + dy * 9, dx, dy, f, isEvolvedPalette(palette) ? 'PLASMA' : 'FIRE');
   }
 }
 
@@ -932,12 +1275,13 @@ function drawWalker32(
   stamp8DirSheet(c, palette, frame, dir, anim, 1, undefined, false);
 
   if (anim === 'ATTACK') {
+    const theme = isEvolvedPalette(palette) ? 'GOLD' : 'FIRE';
     if (dir === 'E' || dir === 'W') {
       const bx = dir === 'E' ? 6 : 25;
-      c.stampMuzzleBlast(bx, 3, 0, -1, f, 'FIRE');
+      c.stampMuzzleBlast(bx, 3, 0, -1, f, theme);
     } else {
-      c.stampMuzzleBlast(7, 3, -0.3, -1, f, 'FIRE');
-      c.stampMuzzleBlast(24, 3, 0.3, -1, f, 'FIRE');
+      c.stampMuzzleBlast(7, 3, -0.3, -1, f, theme);
+      c.stampMuzzleBlast(24, 3, 0.3, -1, f, theme);
     }
   }
 }
@@ -987,7 +1331,7 @@ function drawDrone32(
   c.hLine(14 + hx, 17 + hx, 9 + yOff, sp.eyeGlow);
 
   if (anim === 'ATTACK') {
-    c.stampMuzzleBlast(16 + dx * 6, 26 + dy * 3, dx, dy, f, 'CYAN');
+    c.stampNanoHeal(16 + dx * 6, 26 + dy * 3, dx, dy, f, isEvolvedPalette(palette));
   }
 }
 
@@ -1044,7 +1388,7 @@ function drawClaw32(
 
   if (anim === 'ATTACK') {
     const { dx, dy } = dir8Vector(dir);
-    c.stampMuzzleBlast(16 + dx * 9, 17 + dy * 9, dx, dy, f, 'ACID');
+    c.stampClawSlash(16 + dx * 10, 17 + dy * 9, dx, dy, f, 'ACID');
   }
 }
 
@@ -1126,7 +1470,7 @@ function drawBeetle32(
 
   if (anim === 'ATTACK') {
     const { dx, dy } = dir8Vector(dir);
-    c.stampMuzzleBlast(16 + dx * 9, 16 + dy * 9, dx, dy, f, 'ACID');
+    c.stampClawSlash(16 + dx * 10, 16 + dy * 9, dx, dy, f, 'ACID');
   }
 }
 
@@ -1181,7 +1525,7 @@ function drawKnight32(
 
   if (anim === 'ATTACK') {
     c.partCapsule(16, 17, 16 + dx * 12, 17 + dy * 12, 2.2, crystalRamp);
-    c.stampMuzzleBlast(16 + dx * 10, 17 + dy * 10, dx, dy, f, 'CYAN');
+    c.stampBladeArc(16 + dx * 11, 17 + dy * 10, dx, dy, f, 'SWORD');
   } else {
     const bx = dir === 'W' ? 4 : 27;
     c.partCapsule(bx, 20, bx + (dir === 'W' ? -2 : 2), 3 - f, 2.0, crystalRamp);
@@ -1262,7 +1606,7 @@ function drawLancer32(
 
   if (anim === 'ATTACK') {
     c.partCapsule(16 - dx * 6, 17 - dy * 6, 16 + dx * 13, 17 + dy * 13, 2.0, crystalRamp);
-    c.stampMuzzleBlast(16 + dx * 11, 17 + dy * 11, dx, dy, f, 'CYAN');
+    c.stampBladeArc(16 + dx * 12, 17 + dy * 11, dx, dy, f, 'LANCE');
   } else {
     const lx = dir === 'W' ? 4 : 27;
     const thrust = f === 1 ? -1 : 0;
@@ -1333,7 +1677,7 @@ function drawMite32(
     c.symPartCapsule(12 + hx, 24, 10 + f + hx, 28, 1.8, boneRamp);
   }
   if (anim === 'ATTACK') {
-    c.stampMuzzleBlast(16 + dx * 8, 20 + dy * 7, dx, dy, f, 'CRIMSON');
+    c.stampBiteSnap(16 + dx * 9, 20 + dy * 8, dx, dy, f, 'CRIMSON');
   }
 }
 
@@ -1370,7 +1714,7 @@ function drawCrawler32(
   c.symPartCapsule(10, 24, 6, 29 - f, 2.0, boneRamp);
 
   if (anim === 'ATTACK') {
-    c.stampMuzzleBlast(16 + dx * 9, 22 + dy * 7, dx, dy, f, 'CRIMSON');
+    c.stampBiteSnap(16 + dx * 10, 22 + dy * 8, dx, dy, f, 'CRIMSON');
   }
 }
 
@@ -1415,7 +1759,7 @@ function drawBrute32(
 
   if (anim === 'ATTACK') {
     const { dx, dy } = dir8Vector(dir);
-    c.stampMuzzleBlast(16 + dx * 9, 20 + dy * 8, dx, dy, f, 'CRIMSON');
+    c.stampBiteSnap(16 + dx * 10, 20 + dy * 9, dx, dy, f, 'CRIMSON');
   }
 }
 
@@ -1455,7 +1799,7 @@ function drawMatron32(
   }
 
   if (anim === 'ATTACK') {
-    c.stampMuzzleBlast(16 + dx * 10, 19 + dy * 9, dx, dy, f, 'CRIMSON');
+    c.stampBiteSnap(16 + dx * 11, 19 + dy * 10, dx, dy, f, 'CRIMSON');
   }
 }
 
@@ -1686,16 +2030,25 @@ function drawSniper32(
     const by = 18 - dy * recoil;
     const tx = bx + dx * 15;
     const ty = by + dy * 13;
+    const evolved = isEvolvedPalette(palette);
     c.partCapsule(bx - dx * 4, by - dy * 3, bx + dx * 6, by + dy * 5, 1.8, gunRamp);
     c.partCapsule(bx + dx * 6, by + dy * 5, tx, ty, 0.9, gunRamp);
     c.partDome(bx + dx * 2, by + dy * 2 - 2, 2.2, 1.2, gunRamp);
     c.px(bx + dx * 2 - 1, by + dy * 2 - 2, lens);
-    c.stampMuzzleBlast(tx + dx * 2, ty + dy * 2, dx, dy, f, 'FIRE');
+    c.stampMuzzleBlast(tx + dx * 2, ty + dy * 2, dx, dy, f, evolved ? 'CRIMSON' : 'FIRE');
+    c.fxBegin();
     if (f === 0) {
-      c.fxBegin();
-      drawLine(c, tx + dx * 5, ty + dy * 5, tx + dx * 16, ty + dy * 16, [255, 244, 200]);
-      c.fxEnd();
+      drawLine(c, tx + dx * 4, ty + dy * 4, tx + dx * 12, ty + dy * 12, evolved ? [255, 96, 82] : [255, 244, 200]);
+      drawLine(c, tx + dx * 3, ty + dy * 3, tx + dx * 9, ty + dy * 9, [255, 255, 255]);
+    } else if (evolved) {
+      // 처형자 진화 반동: 진홍·황금 공기 파열 링
+      const perpX = -dy;
+      const perpY = dx;
+      for (const side of [-2, -1, 1, 2]) {
+        c.px(tx + dx * 4 + perpX * side, ty + dy * 4 + perpY * side, Math.abs(side) === 1 ? [255, 207, 74] : [255, 56, 88]);
+      }
     }
+    c.fxEnd();
   } else {
     // 대기/이동: 대물 저격총을 사선으로 거치 (총구가 어깨 위로 솟음)
     const s = sideSign(dir) < 0 ? -1 : 1;
@@ -1752,17 +2105,10 @@ function drawShielder32(
   paintShield();
 
   if (anim === 'ATTACK') {
-    // 방패 강타 충격파
+    // 방패 강타 전용 이중 충격파 판 (성벽 분대 진화 시 황금 충격파)
     const hx = 16 + dx * 13;
     const hy = 19 + dy * 10;
-    c.stampMuzzleBlast(hx, hy, dx, dy, f, 'CYAN');
-    if (f === 0) {
-      c.fxBegin();
-      for (let k = -2; k <= 2; k += 2) {
-        c.px(hx - dy * k * 2, hy + dx * k * 2, sp.white);
-      }
-      c.fxEnd();
-    }
+    c.stampShieldBash(hx, hy, dx, dy, f, isEvolvedPalette(palette));
   }
 }
 
@@ -1778,8 +2124,9 @@ function drawSapper32(
   const { dx, dy } = dir8Vector(dir);
   const back = isBackDir(dir);
   const s = sideSign(dir);
+  const evolved = isEvolvedPalette(palette);
   const mineRamp = makeRamp8([96, 104, 84], [34, 38, 30], sp.trim.t4);
-  const led: Rgb = f === 0 ? [255, 60, 52] : [120, 24, 26];
+  const led: Rgb = f === 0 ? (evolved ? [255, 215, 74] : [255, 60, 52]) : [120, 24, 26];
   const hazard = sp.trim.t3;
 
   const mine = (x: number, y: number, rx: number): void => {
@@ -1821,7 +2168,7 @@ function drawSapper32(
   c.px(ax + (s < 0 ? -1 : 1), 1, led);
 
   if (anim === 'ATTACK') {
-    // 설치: 발치 앞에 지뢰를 박고 흙먼지가 튄다 (이펙트 레이어)
+    // 설치: 발치 앞에 지뢰를 박고 흙먼지와 격발 스파크가 튄다 (이펙트 레이어)
     c.fxBegin();
     const mx = 16 + dx * 9;
     const my = 27 + dy * 2;
@@ -1832,7 +2179,7 @@ function drawSapper32(
     c.px(mx + 5, my - 2 - f, dust);
     c.px(mx - 4, my - 4 - f, lighten(dust, 0.3));
     c.px(mx + 4, my - 4 - f, lighten(dust, 0.3));
-    c.stampMuzzleBlast(16 + dx * 6, 22 + dy * 4, dx * 0.6, 1, f, 'FIRE');
+    c.stampMuzzleBlast(16 + dx * 6, 22 + dy * 4, dx * 0.6, 1, f, evolved ? 'PLASMA' : 'FIRE');
     c.fxEnd();
   } else if (!back) {
     // 손에 든 원반 지뢰
@@ -1855,9 +2202,12 @@ function drawTesla32(
   const { dx, dy } = dir8Vector(dir);
   const back = isBackDir(dir);
   const s = sideSign(dir);
+  const evolved = isEvolvedPalette(palette);
   const coilRamp = makeRamp8([196, 120, 64], [82, 40, 18], [255, 230, 190]);
-  const orbRamp = makeRamp8([120, 236, 255], [20, 90, 160], sp.white);
-  const glow: Rgb = [95, 224, 255];
+  const orbRamp = evolved
+    ? makeRamp8([208, 136, 255], [72, 28, 148], sp.white)
+    : makeRamp8([120, 236, 255], [20, 90, 160], sp.white);
+  const glow: Rgb = evolved ? [196, 120, 255] : [95, 224, 255];
   const charge = anim === 'ATTACK' ? 1 : f;
 
   // 등에 멘 코일 탑: 구리 코일 + 금장 절연 링 + 축전 구체
@@ -1882,13 +2232,16 @@ function drawTesla32(
   c.px(wx, 19, f === 0 ? glow : sp.white);
 
   if (anim === 'ATTACK') {
-    // 구체에서 조준 방향으로 연쇄 번개
-    const tx = 16 + dx * 15;
-    const ty = 16 + dy * 13;
+    // 구체에서 조준 방향으로 연쇄 번개 (폭풍 포대 진화 시 청백·자주 과충전 3중 번개)
+    const tx = 16 + dx * 17;
+    const ty = 16 + dy * 15;
     c.fxBegin();
     drawBolt(c, cx, 4, tx, ty, frame + 1, glow, sp.white);
-    drawBolt(c, wx, 20, tx, ty, frame + 4, glow, sp.white);
-    c.partDome(tx, ty, 2.2, 2.2, orbRamp);
+    drawBolt(c, wx, 20, tx, ty, frame + 4, evolved ? [95, 224, 255] : glow, sp.white);
+    if (evolved) {
+      drawBolt(c, cx, 4, tx - dy * 4, ty + dx * 4, frame + 2, [95, 224, 255], [240, 210, 255]);
+    }
+    c.partDome(tx, ty, evolved ? 2.6 : 2.2, evolved ? 2.6 : 2.2, orbRamp);
     c.px(tx, ty, sp.white);
     c.fxEnd();
   } else if (f === 1) {
@@ -2076,7 +2429,7 @@ function drawSplitter32(
   }
 
   if (anim === 'ATTACK') {
-    c.stampMuzzleBlast(16 + dx * 9, 18 + dy * 8, dx, dy, f, 'CRIMSON');
+    c.stampBiteSnap(16 + dx * 10, 18 + dy * 9, dx, dy, f, 'CRIMSON');
   }
 }
 
@@ -2186,7 +2539,7 @@ function drawShell32(
   }
 
   if (anim === 'ATTACK') {
-    c.stampMuzzleBlast(16 + dx * 13, 19 + dy * 10, dx, dy, f, 'FIRE');
+    c.stampBiteSnap(16 + dx * 12, 19 + dy * 10, dx, dy, f, 'CRIMSON');
   }
 }
 
@@ -2244,11 +2597,11 @@ function drawNest32(
   c.px(14, 1 - f, sp.trim.t4);
 
   if (hatch) {
-    // 유충 기어 나오기
+    // 유충 기어 나오기 + 산란구 점액 분출
     c.partDome(15.5, 22 + f, 2.6, 2.0, makeRamp8(sp.bone.t3, sp.bone.t1, sp.white));
     c.px(14, 22 + f, sp.trim.t4);
     c.px(17, 22 + f, sp.trim.t4);
-    c.stampMuzzleBlast(15.5, 20, 0, 1, f, 'CRIMSON');
+    c.stampMuzzleBlast(15.5, 26, 0, 1, f, 'CRIMSON');
   }
 }
 
@@ -2323,7 +2676,7 @@ function drawQueen32(
   if (!back) head();
 
   if (strike) {
-    c.stampMuzzleBlast(16 + dx * 11, 18 + dy * 10, dx, dy, f, 'CRIMSON');
+    c.stampClawSlash(16 + dx * 12, 18 + dy * 10, dx, dy, f, 'CRIMSON');
   }
 }
 
@@ -2595,17 +2948,17 @@ function drawRaw(
 const isOutlinePx = (d: PixelBuf, i: number): boolean =>
   d[i] === OUTLINE_RGB[0] && d[i + 1] === OUTLINE_RGB[1] && d[i + 2] === OUTLINE_RGB[2];
 
-function translateBuf(src: PixelBuf, ox: number, oy: number): PixelBuf {
+function translateBuf(src: PixelBuf, ox: number, oy: number, size: number = SPRITE_SIZE): PixelBuf {
   const out = new Uint8ClampedArray(src.length);
-  for (let y = 0; y < SPRITE_SIZE; y += 1) {
+  for (let y = 0; y < size; y += 1) {
     const sy = y - oy;
-    if (sy < 0 || sy >= SPRITE_SIZE) continue;
-    for (let x = 0; x < SPRITE_SIZE; x += 1) {
+    if (sy < 0 || sy >= size) continue;
+    for (let x = 0; x < size; x += 1) {
       const sx = x - ox;
-      if (sx < 0 || sx >= SPRITE_SIZE) continue;
-      const si = (sy * SPRITE_SIZE + sx) * 4;
+      if (sx < 0 || sx >= size) continue;
+      const si = (sy * size + sx) * 4;
       if (src[si + 3] === 0) continue;
-      const di = (y * SPRITE_SIZE + x) * 4;
+      const di = (y * size + x) * 4;
       out[di] = src[si];
       out[di + 1] = src[si + 1];
       out[di + 2] = src[si + 2];
@@ -2857,16 +3210,16 @@ function quantizeBuf(d: PixelBuf, pal: Rgb[]): void {
 }
 
 /** 색 픽셀이 투명과 맞닿은 곳에만 1px 외곽선 (외곽선을 겹겹이 두껍게 만들지 않는다) */
-function outlineBuf(d: PixelBuf): void {
+function outlineBuf(d: PixelBuf, size: number = SPRITE_SIZE): void {
   const snap = new Uint8ClampedArray(d);
   const solid = (x: number, y: number): boolean => {
-    if (x < 0 || y < 0 || x >= SPRITE_SIZE || y >= SPRITE_SIZE) return false;
-    const i = (y * SPRITE_SIZE + x) * 4;
+    if (x < 0 || y < 0 || x >= size || y >= size) return false;
+    const i = (y * size + x) * 4;
     return snap[i + 3] > 0 && !isOutlinePx(snap, i);
   };
-  for (let y = 0; y < SPRITE_SIZE; y += 1) {
-    for (let x = 0; x < SPRITE_SIZE; x += 1) {
-      const i = (y * SPRITE_SIZE + x) * 4;
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const i = (y * size + x) * 4;
       if (snap[i + 3] > 0) continue;
       if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) {
         d[i] = OUTLINE_RGB[0];
@@ -2876,6 +3229,143 @@ function outlineBuf(d: PixelBuf): void {
       }
     }
   }
+}
+
+/**
+ * 48x48 이펙트 레이어(fx) 외곽선 후처리:
+ * 유닛 본체(body)가 투명한 바깥 영역에만 1px #070a10 외곽선을 둘러,
+ * 총구/검신과 이펙트 사이에 검은 경계선이 생기지 않으면서 배경 타일 위에서 선명하게 돋보이게 한다.
+ */
+function outlineFxBuf(fx: PixelBuf, body: PixelBuf): void {
+  const snap = new Uint8ClampedArray(fx);
+  const solid = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= SPRITE_FX_SIZE || y >= SPRITE_FX_SIZE) return false;
+    const i = (y * SPRITE_FX_SIZE + x) * 4;
+    return snap[i + 3] > 0 && !isOutlinePx(snap, i);
+  };
+  const bodyOpaque = (fxX: number, fxY: number): boolean => {
+    const bx = fxX - SPRITE_FX_PAD;
+    const by = fxY - SPRITE_FX_PAD;
+    if (bx < 0 || by < 0 || bx >= SPRITE_SIZE || by >= SPRITE_SIZE) return false;
+    return body[(by * SPRITE_SIZE + bx) * 4 + 3] > 0;
+  };
+  for (let y = 0; y < SPRITE_FX_SIZE; y += 1) {
+    for (let x = 0; x < SPRITE_FX_SIZE; x += 1) {
+      const i = (y * SPRITE_FX_SIZE + x) * 4;
+      if (snap[i + 3] > 0 || bodyOpaque(x, y)) continue;
+      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) {
+        fx[i] = OUTLINE_RGB[0];
+        fx[i + 1] = OUTLINE_RGB[1];
+        fx[i + 2] = OUTLINE_RGB[2];
+        fx[i + 3] = 255;
+      }
+    }
+  }
+}
+
+/**
+ * ATTACK 0(예비동작) 전용 차징·조준 광원(48x48 fx):
+ * 실제 발사/타격(ATTACK 1) 직전에 총구 레이저·파일럿 불꽃·코일 코로나·포식자 안광을 1프레임 번쩍여 공격 템포와 가독성을 높인다.
+ */
+function buildWindupFx(
+  archetype: SpriteArchetype,
+  palette: FactionPalette,
+  dir: SpriteDir8
+): PixelBuf {
+  const c = new SculptCanvas32();
+  const { dx, dy } = dir8Vector(dir);
+  const evolved = isEvolvedPalette(palette);
+  const white: Rgb = [255, 255, 255];
+  c.fxBegin();
+
+  switch (archetype) {
+    case 'SOLDIER':
+    case 'COMMANDER': {
+      const [mx, my] = RIFLE_MUZZLE_TIP[dir];
+      const glow: Rgb = evolved ? [255, 207, 74] : hexToRgb(palette.accent);
+      c.px(mx, my, white);
+      for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+        c.px(mx + ox, my + oy, glow);
+      }
+      break;
+    }
+    case 'SNIPER': {
+      // 저격 조준경 붉은 십자 섬광 + 총구 조준 레이저 도트
+      const tx = 16 + dx * 15;
+      const ty = 18 + dy * 13;
+      const laser: Rgb = evolved ? [255, 56, 88] : [255, 96, 72];
+      c.px(tx, ty, white);
+      c.px(tx + dx * 3, ty + dy * 3, laser);
+      c.px(tx + dx * 6, ty + dy * 6, laser);
+      c.px(tx + dx * 9, ty + dy * 9, evolved ? [255, 207, 74] : laser);
+      break;
+    }
+    case 'FLAMER': {
+      // 화염 노즐 파일럿 점화 불꽃
+      const nx = 16 + dx * 9;
+      const ny = 18 + dy * 8;
+      const col: Rgb = evolved ? [110, 238, 255] : [255, 168, 48];
+      c.px(nx, ny, white);
+      c.px(nx + dx, ny + dy, col);
+      c.px(nx - dy, ny + dx, col);
+      c.px(nx + dy, ny - dx, col);
+      break;
+    }
+    case 'WALKER': {
+      // 등면 박격포 발사관 점화 글로우
+      const col: Rgb = evolved ? [255, 207, 74] : [255, 140, 42];
+      if (dir === 'E' || dir === 'W') {
+        const bx = dir === 'E' ? 6 : 25;
+        c.px(bx, 2, white);
+        c.px(bx, 1, col);
+      } else {
+        c.px(7, 2, white);
+        c.px(24, 2, white);
+        c.px(7, 1, col);
+        c.px(24, 1, col);
+      }
+      break;
+    }
+    case 'TESLA': {
+      // 코일 구체 과충전 코로나 링
+      const back = isBackDir(dir);
+      const s = sideSign(dir);
+      const cx = back ? 15.5 : s > 0 ? 8 : s < 0 ? 23 : 7;
+      const col: Rgb = evolved ? [208, 136, 255] : [95, 224, 255];
+      for (let k = 0; k < 6; k += 1) {
+        const a = (k / 6) * Math.PI * 2;
+        c.px(cx + Math.cos(a) * 5, 4 + Math.sin(a) * 4, k % 2 === 0 ? white : col);
+      }
+      break;
+    }
+    case 'SHIELDER':
+    case 'KNIGHT':
+    case 'LANCER': {
+      // 방패/창/검 선단 반사광 십자(+)
+      const gx = 16 + dx * 10;
+      const gy = 17 + dy * 8;
+      const col: Rgb = evolved ? [255, 207, 74] : [95, 224, 255];
+      c.px(gx, gy, white);
+      for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+        c.px(gx + ox, gy + oy, col);
+      }
+      break;
+    }
+    default: {
+      // 적/생체 유닛: 공격 직전 안광·턱 예고 스파크
+      const gx = 16 + dx * 8;
+      const gy = 18 + dy * 7;
+      const acc = hexToRgb(palette.accent);
+      c.px(gx, gy, white);
+      c.px(gx + dx, gy + dy, acc);
+      c.px(gx - dy * 2, gy + dx * 2, acc);
+      c.px(gx + dy * 2, gy - dx * 2, acc);
+      break;
+    }
+  }
+
+  c.fxEnd();
+  return c.fx;
 }
 
 interface SpriteFrameBufs {
@@ -2892,23 +3382,32 @@ function composeFrame(
   dir: SpriteDir8,
   anim: SpriteAnim
 ): SpriteFrameBufs {
+  const fMod = frame % SPRITE_FRAME_COUNT[anim];
   const plan = planFrame(anim, frame, dir);
-  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${dir}|${anim}|${plan.drawFrame}|${frame % SPRITE_FRAME_COUNT[anim]}`;
+  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${dir}|${anim}|${plan.drawFrame}|${fMod}`;
   const hit = frameMemo.get(key);
   if (hit) return hit;
 
   const raw = drawRaw(archetype, palette, plan.drawFrame, dir, plan.drawAnim);
   const [px0, oy] = pivotOffset(archetype, palette, dir);
   const ox = px0 + (plan.drawAnim === 'ATTACK' ? attackAlignX(archetype, palette, dir) : 0);
-  let body = translateBuf(raw.body, ox, oy);
-  let fx = plan.fx ? translateBuf(raw.fx, ox, oy) : new Uint8ClampedArray(raw.fx.length);
+  let body = translateBuf(raw.body, ox, oy, SPRITE_SIZE);
+  const isWindup = anim === 'ATTACK' && fMod === 0;
+  const rawFx = isWindup ? buildWindupFx(archetype, palette, dir) : raw.fx;
+  let fx =
+    plan.fx || isWindup
+      ? translateBuf(rawFx, ox + (isWindup ? plan.upper[0] : 0), oy + (isWindup ? plan.upper[1] : 0), SPRITE_FX_SIZE)
+      : new Uint8ClampedArray(raw.fx.length);
   body = applyPose(body, plan);
   quantizeBuf(body, getSpritePalette16(archetype, palette));
-  outlineBuf(body);
+  outlineBuf(body, SPRITE_SIZE);
   const snap = SPRITE_BASELINE_Y - bottomRow(body);
   if (snap !== 0) {
-    body = translateBuf(body, 0, snap);
-    fx = translateBuf(fx, 0, snap);
+    body = translateBuf(body, 0, snap, SPRITE_SIZE);
+    fx = translateBuf(fx, 0, snap, SPRITE_FX_SIZE);
+  }
+  if (plan.fx || isWindup) {
+    outlineFxBuf(fx, body);
   }
   const out = { body, fx };
   if (frameMemo.size > 512) frameMemo.clear();
@@ -2931,7 +3430,7 @@ export function renderSpritePixels(
   return { width: SPRITE_SIZE, height: SPRITE_SIZE, data: new Uint8ClampedArray(body) };
 }
 
-/** 같은 프레임의 이펙트 레이어 (총구 섬광·번개 등). 비어 있으면 null */
+/** 같은 프레임의 48x48 확장 이펙트 레이어 (총구 섬광·참격·번개·예비동작 안광 등). 비어 있으면 null */
 export function renderSpriteFxPixels(
   archetype: SpriteArchetype,
   palette: FactionPalette,
@@ -2941,7 +3440,7 @@ export function renderSpriteFxPixels(
 ): { width: number; height: number; data: Uint8ClampedArray } | null {
   const { fx } = composeFrame(archetype, palette, Math.abs(Math.round(frame)), dir, anim);
   for (let i = 3; i < fx.length; i += 4) {
-    if (fx[i] > 0) return { width: SPRITE_SIZE, height: SPRITE_SIZE, data: new Uint8ClampedArray(fx) };
+    if (fx[i] > 0) return { width: SPRITE_FX_SIZE, height: SPRITE_FX_SIZE, data: new Uint8ClampedArray(fx) };
   }
   return null;
 }
@@ -3151,3 +3650,553 @@ export function renderGroundTilePixels(): { width: number; height: number; data:
 
   return { width: size, height: size, data };
 }
+
+// ─────────────────────────── 6. 월드 전투 이펙트 & 투사체 전용 픽셀아트 스프라이트 생성기 ───────────────────────────
+
+const FX_BAYER_4X4: ReadonlyArray<ReadonlyArray<number>> = [
+  [0, 8, 2, 10],
+  [12, 4, 14, 6],
+  [3, 11, 1, 9],
+  [15, 7, 13, 5],
+];
+
+function makePixelCanvas(size: number): {
+  data: Uint8ClampedArray;
+  px: (x: number, y: number, c: Rgb) => void;
+  disc: (cx: number, cy: number, r: number, c: Rgb, ditherKeep?: number) => void;
+  outline: () => void;
+} {
+  const data = new Uint8ClampedArray(size * size * 4);
+  const px = (x: number, y: number, c: Rgb): void => {
+    const ix = Math.round(x);
+    const iy = Math.round(y);
+    if (ix < 0 || ix >= size || iy < 0 || iy >= size) return;
+    const i = (iy * size + ix) * 4;
+    data[i] = c[0];
+    data[i + 1] = c[1];
+    data[i + 2] = c[2];
+    data[i + 3] = 255;
+  };
+  const disc = (cx: number, cy: number, r: number, c: Rgb, ditherKeep: number = 16): void => {
+    const x0 = Math.floor(cx - r);
+    const x1 = Math.ceil(cx + r);
+    const y0 = Math.floor(cy - r);
+    const y1 = Math.ceil(cy + r);
+    const r2 = r * r;
+    for (let y = y0; y <= y1; y += 1) {
+      for (let x = x0; x <= x1; x += 1) {
+        if ((x - cx) ** 2 + (y - cy) ** 2 > r2) continue;
+        if (ditherKeep < 16 && FX_BAYER_4X4[y & 3][x & 3] >= ditherKeep) continue;
+        px(x, y, c);
+      }
+    }
+  };
+  const outline = (): void => {
+    outlineBuf(data, size);
+  };
+  return { data, px, disc, outline };
+}
+
+export type ExplosionVariant = 'STANDARD' | 'PLASMA' | 'ACID';
+export const EXPLOSION_FRAME_COUNT = 5;
+
+/**
+ * 5프레임 28x28 볼륨 클러스터 폭발 픽셀 스프라이트 (박격포·다연장·지뢰·자폭충):
+ * - F0: 백열 십자 코어 섬광 + 초기 화구
+ * - F1: 다중 볼륨 화구 클러스터 팽창
+ * - F2: 최대 화구 + 외곽 충격파 도트 + 불똥 파편
+ * - F3: 중심이 비어가는 도넛형 연기·잔열 고리 (Bayer 디더링)
+ * - F4: 흩어지는 그을음 연기 클러스터
+ */
+export function renderExplosionFramePixels(
+  frame: number,
+  variant: ExplosionVariant = 'STANDARD'
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const size = 28;
+  const f = Math.max(0, Math.min(EXPLOSION_FRAME_COUNT - 1, Math.round(frame)));
+  const c = makePixelCanvas(size);
+  const cx = 13.5;
+  const cy = 13.5;
+
+  const white: Rgb = [255, 255, 255];
+  const hot: Rgb =
+    variant === 'PLASMA' ? [210, 254, 255] : variant === 'ACID' ? [242, 255, 175] : [255, 244, 148];
+  const mid: Rgb =
+    variant === 'PLASMA' ? [95, 224, 255] : variant === 'ACID' ? [168, 232, 56] : [255, 164, 42];
+  const deep: Rgb =
+    variant === 'PLASMA' ? [255, 207, 74] : variant === 'ACID' ? [74, 148, 24] : [216, 62, 28];
+  const smoke: Rgb =
+    variant === 'PLASMA' ? [48, 72, 108] : variant === 'ACID' ? [38, 62, 28] : [68, 44, 46];
+  const darkSmoke: Rgb = [34, 26, 32];
+
+  const lobes: ReadonlyArray<readonly [number, number, number]> = [
+    [0, -1, 1.0],
+    [-0.85, -0.45, 0.85],
+    [0.85, -0.4, 0.85],
+    [-0.7, 0.7, 0.8],
+    [0.75, 0.65, 0.82],
+    [0, 0.85, 0.76],
+  ];
+
+  if (f === 0) {
+    c.disc(cx, cy, 6.2, deep);
+    c.disc(cx, cy, 4.6, mid);
+    c.disc(cx, cy, 3.0, hot);
+    // 십자 섬광 광선
+    for (let k = -9; k <= 9; k += 1) {
+      c.px(cx + k, cy, Math.abs(k) <= 5 ? white : hot);
+      c.px(cx, cy + k, Math.abs(k) <= 5 ? white : hot);
+    }
+    for (let k = -5; k <= 5; k += 1) {
+      c.px(cx + k, cy + k, Math.abs(k) <= 2 ? white : hot);
+      c.px(cx + k, cy - k, Math.abs(k) <= 2 ? white : hot);
+    }
+  } else if (f === 1) {
+    for (const [lx, ly, sc] of lobes) {
+      c.disc(cx + lx * 4.2, cy + ly * 4.2, 4.6 * sc, deep);
+    }
+    for (const [lx, ly, sc] of lobes) {
+      c.disc(cx + lx * 3.2, cy + ly * 3.2, 3.6 * sc, mid);
+    }
+    c.disc(cx - 0.5, cy - 0.5, 4.2, hot);
+    c.disc(cx - 1, cy - 1, 2.2, white);
+  } else if (f === 2) {
+    c.disc(cx, cy, 10.2, smoke, 12);
+    for (const [lx, ly, sc] of lobes) {
+      c.disc(cx + lx * 6.0, cy + ly * 6.0, 4.8 * sc, deep);
+      c.disc(cx + lx * 5.2 - 0.5, cy + ly * 5.2 - 0.5, 3.3 * sc, mid);
+    }
+    c.disc(cx, cy, 4.4, hot, 13);
+    c.disc(cx - 1, cy - 1, 2.0, white);
+    // 외곽 불똥 스파크 8개
+    for (let k = 0; k < 8; k += 1) {
+      const a = (k / 8) * Math.PI * 2 + 0.25;
+      c.px(cx + Math.cos(a) * 11.5, cy + Math.sin(a) * 11.5, k % 2 === 0 ? white : hot);
+    }
+  } else if (f === 3) {
+    // 도넛형 연기·잔열 고리 (중심 공동화)
+    for (let k = 0; k < 8; k += 1) {
+      const a = (k / 8) * Math.PI * 2 + 0.2;
+      const rx = cx + Math.cos(a) * 7.4;
+      const ry = cy + Math.sin(a) * 7.4;
+      c.disc(rx, ry, 3.8, smoke, 13);
+      c.disc(rx - Math.cos(a) * 1.1, ry - Math.sin(a) * 1.1, 2.3, k % 2 === 0 ? deep : mid, 12);
+      if (k % 2 === 0) {
+        c.px(rx - Math.cos(a) * 1.5, ry - Math.sin(a) * 1.5, hot);
+      }
+    }
+  } else {
+    // 디더링 소멸 연기 퍼프
+    for (let k = 0; k < 6; k += 1) {
+      const a = (k / 6) * Math.PI * 2 + 0.5;
+      const rx = cx + Math.cos(a) * 8.6;
+      const ry = cy + Math.sin(a) * 8.6;
+      c.disc(rx, ry, 2.8, darkSmoke, 9);
+      c.disc(rx - 0.5, ry - 0.5, 1.8, smoke, 10);
+      if (k % 2 === 0) {
+        c.px(rx, ry, deep);
+      }
+    }
+  }
+
+  c.outline();
+  return { width: size, height: size, data: c.data };
+}
+
+export type SlashVariant = 'BLADE' | 'BASH' | 'GOLD_BASH' | 'CLAW';
+export const SLASH_FRAME_COUNT = 3;
+
+/**
+ * 3프레임 24x24 8방향 근접 참격(`BLADE` / `CLAW`) 및 방패 강타(`BASH` / `GOLD_BASH`) 픽셀 스프라이트.
+ */
+export function renderSlashFramePixels(
+  frame: number,
+  dir: SpriteDir8,
+  variant: SlashVariant = 'BLADE'
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const size = 24;
+  const f = Math.max(0, Math.min(SLASH_FRAME_COUNT - 1, Math.round(frame)));
+  const c = makePixelCanvas(size);
+  const { dx, dy } = dir8Vector(dir);
+  const perpX = -dy;
+  const perpY = dx;
+  const cx = 11.5;
+  const cy = 11.5;
+
+  const white: Rgb = [255, 255, 255];
+  const main: Rgb =
+    variant === 'GOLD_BASH'
+      ? [255, 207, 74]
+      : variant === 'CLAW'
+        ? [184, 238, 64]
+        : [110, 238, 255];
+  const deep: Rgb =
+    variant === 'GOLD_BASH'
+      ? [216, 118, 24]
+      : variant === 'CLAW'
+        ? [74, 152, 24]
+        : [32, 136, 204];
+
+  if (variant === 'BASH' || variant === 'GOLD_BASH') {
+    // 묵직한 타워 실드 이중 충격파 아크 + 파쇄 블록
+    const push = f * 1.5;
+    for (let u = -7; u <= 7; u += 1) {
+      if (f === 2 && Math.abs(u) % 2 === 1) continue;
+      const curve = (1 - (u / 7.5) ** 2) * 4.2 + push - 1.5;
+      const ax = cx + perpX * u + dx * curve;
+      const ay = cy + perpY * u + dy * curve;
+      c.px(ax + dx, ay + dy, f === 0 || Math.abs(u) <= 3 ? white : main);
+      c.px(ax, ay, main);
+      if (f <= 1) {
+        c.px(ax - dx, ay - dy, deep);
+      }
+      // 후방 2차 잔향 고리
+      if (f >= 1 && Math.abs(u) <= 5) {
+        c.px(ax - dx * 3, ay - dy * 3, deep);
+      }
+    }
+    for (const k of [-4, -1.5, 1.5, 4]) {
+      const r = 4.5 + f * 2.2;
+      c.px(cx + perpX * k * 1.3 + dx * r, cy + perpY * k * 1.3 + dy * r, f === 0 ? white : main);
+    }
+  } else {
+    // 초승달 검기 아크 (F0: 선단 집중 -> F1: 풀 스윙 호 -> F2: 디더링 잔상 & 스파크)
+    for (let i = -8; i <= 8; i += 1) {
+      const u = i / 8;
+      if (f === 0 && u > 0.55) continue;
+      if (f === 2 && (u < -0.45 || Math.abs(i) % 2 === 1)) continue;
+      const curve = (1 - u * u) * 5.5 + f * 1.0 - 1.5;
+      const sx = cx + perpX * u * 8.5 + dx * curve;
+      const sy = cy + perpY * u * 8.5 + dy * curve;
+      c.px(sx + dx, sy + dy, Math.abs(u) < 0.5 ? white : main);
+      c.px(sx, sy, main);
+      if (Math.abs(u) < 0.65 && f !== 2) {
+        c.px(sx - dx, sy - dy, deep);
+      }
+    }
+    for (let k = -1; k <= 2; k += 1) {
+      const spA = Math.atan2(dy, dx) + k * 0.42;
+      const spR = 4 + f * 2.6;
+      c.px(cx + Math.cos(spA) * spR, cy + Math.sin(spA) * spR, k === 0 ? white : main);
+    }
+  }
+
+  c.outline();
+  return { width: size, height: size, data: c.data };
+}
+
+export type FlameVariant = 'FIRE' | 'PLASMA' | 'ACID';
+export const FLAME_FRAME_COUNT = 4;
+
+/**
+ * 4프레임 14x14 볼륨 화염·플라즈마·산성 클러스터 퍼프 스프라이트 (`CONE` 방사 및 바닥 장판용).
+ */
+export function renderFlamePuffPixels(
+  frame: number,
+  variant: FlameVariant = 'FIRE'
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const size = 14;
+  const f = Math.max(0, Math.min(FLAME_FRAME_COUNT - 1, Math.round(frame)));
+  const c = makePixelCanvas(size);
+  const cx = 6.5;
+  const cy = 6.5;
+
+  const white: Rgb = [255, 255, 255];
+  const bright: Rgb =
+    variant === 'PLASMA' ? [210, 254, 255] : variant === 'ACID' ? [238, 255, 165] : [255, 236, 104];
+  const mid: Rgb =
+    variant === 'PLASMA' ? [95, 224, 255] : variant === 'ACID' ? [156, 228, 52] : [255, 132, 28];
+  const outer: Rgb =
+    variant === 'PLASMA' ? [255, 207, 74] : variant === 'ACID' ? [68, 142, 22] : [208, 42, 24];
+  const smoke: Rgb =
+    variant === 'PLASMA' ? [42, 74, 118] : variant === 'ACID' ? [34, 62, 22] : [64, 40, 42];
+
+  if (f === 0) {
+    c.disc(cx, cy, 3.2, mid);
+    c.disc(cx - 0.4, cy - 0.4, 2.2, bright);
+    c.disc(cx - 0.5, cy - 0.5, 1.2, white);
+  } else if (f === 1) {
+    c.disc(cx, cy, 4.4, outer);
+    c.disc(cx - 0.5, cy - 0.5, 3.2, mid);
+    c.disc(cx - 0.8, cy - 0.8, 2.0, bright);
+    c.px(cx - 1, cy - 1, white);
+  } else if (f === 2) {
+    c.disc(cx + 0.5, cy + 0.5, 4.6, smoke, 13);
+    c.disc(cx - 0.4, cy - 0.4, 3.8, outer);
+    c.disc(cx - 0.8, cy - 0.8, 2.4, mid);
+    c.px(cx - 1, cy - 1, bright);
+  } else {
+    c.disc(cx, cy, 4.2, smoke, 10);
+    c.disc(cx - 0.5, cy - 0.5, 2.6, outer, 12);
+    c.px(cx - 1, cy - 1, mid);
+  }
+
+  c.outline();
+  return { width: size, height: size, data: c.data };
+}
+
+export type HitSparkVariant = 'SPARK' | 'PIERCE' | 'DEFLECT' | 'EXECUTE' | 'REFLECT';
+export const HIT_SPARK_FRAME_COUNT = 3;
+
+/**
+ * 3프레임 16x16 피격·관통·도탄·처형·반사 픽셀 임팩트 스프라이트.
+ */
+export function renderHitSparkPixels(
+  frame: number,
+  dir: SpriteDir8,
+  variant: HitSparkVariant = 'SPARK'
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const size = 16;
+  const f = Math.max(0, Math.min(HIT_SPARK_FRAME_COUNT - 1, Math.round(frame)));
+  const c = makePixelCanvas(size);
+  const { dx, dy } = dir8Vector(dir);
+  const perpX = -dy;
+  const perpY = dx;
+  const cx = 7.5;
+  const cy = 7.5;
+  const white: Rgb = [255, 255, 255];
+
+  if (variant === 'EXECUTE') {
+    // 처형자 빈사 즉사: 진홍·황금 X자 단두대 교차 섬광
+    const crimson: Rgb = [255, 56, 88];
+    const gold: Rgb = [255, 207, 74];
+    const span = f === 0 ? 6 : f === 1 ? 7 : 5;
+    for (let k = -span; k <= span; k += 1) {
+      if (f === 2 && Math.abs(k) < 2) continue;
+      c.px(cx + k, cy + k, Math.abs(k) <= 2 ? white : gold);
+      c.px(cx + k, cy - k, Math.abs(k) <= 2 ? white : crimson);
+      if (Math.abs(k) <= 4 && f <= 1) {
+        c.px(cx + k + 1, cy + k, crimson);
+        c.px(cx + k - 1, cy - k, gold);
+      }
+    }
+  } else if (variant === 'REFLECT') {
+    // 성벽 분대 피해 반사: 황금 육각 방패 카운터 충격파
+    const gold: Rgb = [255, 207, 74];
+    const amber: Rgb = [235, 132, 32];
+    const r = 3 + f * 1.8;
+    for (let k = 0; k < 12; k += 1) {
+      const a = (k / 12) * Math.PI * 2;
+      c.px(cx + Math.cos(a) * r, cy + Math.sin(a) * r, k % 2 === 0 ? white : gold);
+      if (f <= 1) {
+        c.px(cx + Math.cos(a) * (r - 1), cy + Math.sin(a) * (r - 1), amber);
+      }
+    }
+    if (f === 0) c.px(cx, cy, white);
+  } else if (variant === 'DEFLECT') {
+    // 갑각충 정면 70% 도탄: 은회색 V자 튕김 아크
+    const silver: Rgb = [208, 224, 242];
+    const steel: Rgb = [120, 138, 162];
+    for (const side of [-1, 1]) {
+      for (let s = 1; s <= 4; s += 1) {
+        const px = cx + (dx * 0.7 + perpX * side * 0.8) * (s + f);
+        const py = cy + (dy * 0.7 + perpY * side * 0.8) * (s + f);
+        c.px(px, py, s <= 2 ? white : silver);
+      }
+    }
+    if (f <= 1) {
+      c.px(cx, cy, white);
+      c.px(cx + dx, cy + dy, steel);
+    }
+  } else if (variant === 'PIERCE') {
+    // 저격 / 관통탄 탄착: 전방 관통 다이아몬드 파열 + 충격 링
+    const gold: Rgb = [255, 224, 104];
+    const crimson: Rgb = [255, 72, 88];
+    for (let s = -3; s <= 5; s += 1) {
+      if (f === 2 && Math.abs(s) < 2) continue;
+      c.px(cx + dx * s, cy + dy * s, Math.abs(s) <= 2 ? white : gold);
+    }
+    for (const side of [-1, 1]) {
+      const w = 2 + f;
+      c.px(cx + perpX * side * w, cy + perpY * side * w, f === 0 ? white : crimson);
+      c.px(cx + dx * 2 + perpX * side * (w + 1), cy + dy * 2 + perpY * side * (w + 1), gold);
+    }
+  } else {
+    // 일반 연사 탄착(SPARK): 가독성을 해치지 않는 간결한 3갈래 픽셀 스파크
+    const yellow: Rgb = [255, 232, 112];
+    const orange: Rgb = [242, 132, 42];
+    if (f === 0) {
+      c.px(cx, cy, white);
+      c.px(cx + dx, cy + dy, white);
+    }
+    for (const k of [-1, 0, 1]) {
+      const ang = Math.atan2(dy, dx) + k * 0.65;
+      const r1 = 1.5 + f * 1.4;
+      const r2 = 2.8 + f * 1.6;
+      c.px(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1, f === 0 ? white : yellow);
+      c.px(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2, f === 2 ? orange : yellow);
+    }
+  }
+
+  c.outline();
+  return { width: size, height: size, data: c.data };
+}
+
+/**
+ * 아군 6종(RIFLE, GATLING, SNIPER, EXECUTIONER, MORTAR, MLRS) 및
+ * 적 4종(SPORE, SPIKE, PRISM, ROYAL) 투사체 전용 16x16 8방향 2프레임 픽셀 스프라이트.
+ */
+export function renderProjectilePixels(
+  visual: ProjectileVisual | EnemyShotVisual,
+  dir: SpriteDir8,
+  frame: number = 0
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const size = 16;
+  const f = Math.abs(Math.round(frame)) % 2;
+  const c = makePixelCanvas(size);
+  const { dx, dy } = dir8Vector(dir);
+  const perpX = -dy;
+  const perpY = dx;
+  const cx = 7.5;
+  const cy = 7.5;
+  const white: Rgb = [255, 255, 255];
+
+  switch (visual) {
+    case 'MORTAR':
+    case 'MLRS': {
+      const isMlrs = visual === 'MLRS';
+      const bodyDark: Rgb = isMlrs ? [142, 34, 42] : [72, 82, 98];
+      const bodyMid: Rgb = isMlrs ? [224, 68, 64] : [122, 134, 152];
+      const tipCol: Rgb = isMlrs ? [255, 214, 84] : [242, 142, 38];
+      const flame1: Rgb = isMlrs ? [110, 238, 255] : [255, 196, 72];
+      const flame2: Rgb = isMlrs ? [255, 207, 74] : [224, 92, 32];
+
+      // 후방 추진 화염 + 연기 퍼프
+      for (let t = 2; t <= 5; t += 1) {
+        const tx = cx - dx * t;
+        const ty = cy - dy * t;
+        c.px(tx, ty, t === 2 ? white : t === 3 ? flame1 : flame2);
+        if (t === 3 + f) {
+          c.px(tx + perpX, ty + perpY, flame2);
+          c.px(tx - perpX, ty - perpY, flame2);
+        }
+      }
+      // 방향성 포탄/로켓 동체
+      for (let s = -1; s <= 2; s += 1) {
+        const bx = cx + dx * s;
+        const by = cy + dy * s;
+        const col = s === 2 ? white : s === 1 ? tipCol : bodyMid;
+        c.px(bx, by, col);
+        if (s <= 1) {
+          c.px(bx + perpX, by + perpY, bodyMid);
+          c.px(bx - perpX, by - perpY, bodyDark);
+        }
+      }
+      break;
+    }
+
+    case 'SNIPER':
+    case 'EXECUTIONER': {
+      const isExec = visual === 'EXECUTIONER';
+      const trail: Rgb = isExec ? [255, 56, 88] : [255, 196, 72];
+      const sub: Rgb = isExec ? [255, 207, 74] : [110, 224, 255];
+      // 장거리 고속 철갑/레일건 창 탄두
+      for (let s = -5; s <= 4; s += 1) {
+        const px = cx + dx * s;
+        const py = cy + dy * s;
+        c.px(px, py, s >= 1 ? white : s >= -2 ? sub : trail);
+        if (s >= -1 && s <= 1) {
+          c.px(px + perpX, py + perpY, s === 0 ? white : trail);
+          c.px(px - perpX, py - perpY, s === 0 ? white : trail);
+        }
+      }
+      if (isExec && f === 0) {
+        c.px(cx - dx * 2 + perpX * 2, cy - dy * 2 + perpY * 2, sub);
+        c.px(cx - dx * 2 - perpX * 2, cy - dy * 2 - perpY * 2, sub);
+      }
+      break;
+    }
+
+    case 'GATLING': {
+      // 개틀링 진화: 황금 듀얼 회전 예광탄
+      const gold: Rgb = [255, 207, 74];
+      const bright: Rgb = [255, 246, 172];
+      for (const side of [-1, 1]) {
+        const shift = side * (f === 0 ? 1 : -1);
+        for (let s = -3; s <= 2; s += 1) {
+          const px = cx + dx * (s + shift * 0.5) + perpX * side * 1.1;
+          const py = cy + dy * (s + shift * 0.5) + perpY * side * 1.1;
+          c.px(px, py, s >= 1 ? white : s >= -1 ? bright : gold);
+        }
+      }
+      break;
+    }
+
+    case 'RIFLE': {
+      // 기본 가우스 소총탄
+      const gold: Rgb = [242, 193, 78];
+      const orange: Rgb = [224, 122, 36];
+      for (let s = -3; s <= 2; s += 1) {
+        c.px(cx + dx * s, cy + dy * s, s >= 1 ? white : s >= -1 ? gold : orange);
+      }
+      c.px(cx + perpX, cy + perpY, gold);
+      c.px(cx - perpX, cy - perpY, gold);
+      break;
+    }
+
+    case 'SPIKE': {
+      // 군체 가시투척충: 뼈색·산성 골침 가시
+      const bone: Rgb = [238, 232, 212];
+      const acid: Rgb = [168, 232, 56];
+      const dark: Rgb = [112, 98, 82];
+      for (let s = -3; s <= 3; s += 1) {
+        c.px(cx + dx * s, cy + dy * s, s >= 2 ? white : s >= 0 ? bone : acid);
+        if (s === -1 || s === 0) {
+          c.px(cx + dx * s + perpX, cy + dy * s + perpY, bone);
+          c.px(cx + dx * s - perpX, cy + dy * s - perpY, dark);
+        }
+      }
+      break;
+    }
+
+    case 'PRISM': {
+      // 교단 프리즘 포대: 청록·황금 회전 다이아몬드 광자탄
+      const cyan: Rgb = [95, 224, 255];
+      const deep: Rgb = [28, 124, 196];
+      const gold: Rgb = [232, 196, 88];
+      c.disc(cx, cy, 2.4, deep);
+      c.px(cx, cy, white);
+      for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+        c.px(cx + ox, cy + oy, cyan);
+        c.px(cx + ox * 2, cy + oy * 2, f === 0 ? cyan : gold);
+      }
+      break;
+    }
+
+    case 'ROYAL': {
+      // 보스(모체 / 대주교) 대형 황금·진홍 코어 탄막 구체
+      const gold: Rgb = [255, 212, 72];
+      const crimson: Rgb = [212, 42, 68];
+      c.disc(cx, cy, 3.2, crimson);
+      c.disc(cx - 0.3, cy - 0.3, 2.1, gold);
+      c.px(cx - 1, cy - 1, white);
+      c.px(cx, cy, white);
+      if (f === 1) {
+        for (const [ox, oy] of [[-3, 0], [3, 0], [0, -3], [0, 3]] as const) {
+          c.px(cx + ox, cy + oy, gold);
+        }
+      }
+      break;
+    }
+
+    case 'SPORE':
+    default: {
+      // 포자충 / 포자 탑: 산성 포자 구체 + 뒤따르는 기포 도트
+      const acidBright: Rgb = [224, 252, 120];
+      const acidMid: Rgb = [148, 216, 48];
+      const acidDark: Rgb = [68, 128, 24];
+      c.disc(cx, cy, 2.5, acidDark);
+      c.disc(cx - 0.4, cy - 0.4, 1.8, acidMid);
+      c.px(cx - 1, cy - 1, white);
+      c.px(cx, cy - 1, acidBright);
+      // 후방 기포
+      c.px(cx - dx * (3 + f), cy - dy * (3 + f), acidBright);
+      c.px(cx - dx * 4 + perpX * (f === 0 ? 1 : -1), cy - dy * 4 + perpY * (f === 0 ? 1 : -1), acidMid);
+      break;
+    }
+  }
+
+  c.outline();
+  return { width: size, height: size, data: c.data };
+}
+

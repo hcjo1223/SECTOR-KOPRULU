@@ -2,16 +2,28 @@ import { describe, expect, it } from 'vitest';
 import {
   ALL_DIRS_8,
   angleToDir8,
+  EXPLOSION_FRAME_COUNT,
+  FLAME_FRAME_COUNT,
   getAllArchetypes,
+  HIT_SPARK_FRAME_COUNT,
   OUTLINE_RGB,
+  renderExplosionFramePixels,
+  renderFlamePuffPixels,
   renderGemPixels,
   renderGroundTilePixels,
+  renderHitSparkPixels,
+  renderProjectilePixels,
+  renderSlashFramePixels,
+  renderSpriteFxPixels,
   renderSpritePixels,
+  SLASH_FRAME_COUNT,
+  SPRITE_FX_SIZE,
   SPRITE_SIZE,
 } from '../SurvivorSprites';
 
 describe('SurvivorSprites', () => {
   const ironcladPalette = { primary: '#4f7fb8', secondary: '#2d4a6e', accent: '#f2c14e' };
+  const evolvedPalette = { primary: '#5a8fd4', secondary: '#34588a', accent: '#ffcf4a' };
   const hivePalette = { primary: '#8f4fa8', secondary: '#4e2a5e', accent: '#b8e04a' };
   const lumenPalette = { primary: '#e0c060', secondary: '#7a5a20', accent: '#5fd8f0' };
 
@@ -120,6 +132,106 @@ describe('SurvivorSprites', () => {
       dirHashes.add(Array.from(view.data.slice(0, 1024)).join(','));
     }
     expect(dirHashes.size).toBe(8);
+  });
+
+  it('renders 48x48 detached attack FX across all 30 archetypes and all 8 directions (including NW) with distinct windup/blast/recoil stages', () => {
+    for (const dir of ALL_DIRS_8) {
+      const fx0 = renderSpriteFxPixels('SOLDIER', ironcladPalette, 0, dir, 'ATTACK');
+      const fx1 = renderSpriteFxPixels('SOLDIER', ironcladPalette, 1, dir, 'ATTACK');
+      const fx2 = renderSpriteFxPixels('SOLDIER', ironcladPalette, 2, dir, 'ATTACK');
+      expect(fx0, `SOLDIER ATTACK 0 ${dir}`).not.toBeNull();
+      expect(fx1, `SOLDIER ATTACK 1 ${dir}`).not.toBeNull();
+      expect(fx2, `SOLDIER ATTACK 2 ${dir}`).not.toBeNull();
+      expect(fx1!.width).toBe(SPRITE_FX_SIZE);
+      expect(fx1!.height).toBe(SPRITE_FX_SIZE);
+      // ATTACK 0(차징) vs ATTACK 1(총구 화염) vs ATTACK 2(연기·탄피)가 서로 달라야 한다
+      expect(fx0!.data.some((v, idx) => v !== fx1!.data[idx])).toBe(true);
+      expect(fx1!.data.some((v, idx) => v !== fx2!.data[idx])).toBe(true);
+    }
+
+    for (const a of getAllArchetypes()) {
+      const fx1 = renderSpriteFxPixels(a, ironcladPalette, 1, 'SE', 'ATTACK');
+      const fx2 = renderSpriteFxPixels(a, ironcladPalette, 2, 'SE', 'ATTACK');
+      expect(fx1, `${a} ATTACK 1 FX`).not.toBeNull();
+      expect(fx2, `${a} ATTACK 2 FX`).not.toBeNull();
+      expect(fx1!.width).toBe(48);
+      expect(fx1!.height).toBe(48);
+
+      let hasOutline = false;
+      for (let i = 0; i < fx1!.data.length; i += 4) {
+        const alpha = fx1!.data[i + 3];
+        expect(alpha === 0 || alpha === 255).toBe(true);
+        if (
+          alpha === 255 &&
+          fx1!.data[i] === OUTLINE_RGB[0] &&
+          fx1!.data[i + 1] === OUTLINE_RGB[1] &&
+          fx1!.data[i + 2] === OUTLINE_RGB[2]
+        ) {
+          hasOutline = true;
+        }
+      }
+      expect(hasOutline, `${a} FX has 1px dark outline`).toBe(true);
+    }
+
+    // 진화 팔레트(#ffcf4a) 적용 시 FLAMER / TESLA / SNIPER / SHIELDER 이펙트 색상이 진화 테마로 바뀌어야 한다
+    for (const a of ['FLAMER', 'TESLA', 'SNIPER', 'SHIELDER', 'SOLDIER'] as const) {
+      const baseFx = renderSpriteFxPixels(a, ironcladPalette, 1, 'E', 'ATTACK')!;
+      const evoFx = renderSpriteFxPixels(a, evolvedPalette, 1, 'E', 'ATTACK')!;
+      expect(baseFx.data.some((v, idx) => v !== evoFx.data[idx]), `${a} evolved FX differs`).toBe(true);
+    }
+  });
+
+  it('renders multi-frame world combat effect and projectile pixel art sprites with binary alpha and 1px outline', () => {
+    const checkPixelSprite = (buf: { width: number; height: number; data: Uint8ClampedArray }, label: string): void => {
+      let opaque = 0;
+      let outline = 0;
+      for (let i = 0; i < buf.data.length; i += 4) {
+        const a = buf.data[i + 3];
+        expect(a === 0 || a === 255, label).toBe(true);
+        if (a === 255) {
+          opaque += 1;
+          if (
+            buf.data[i] === OUTLINE_RGB[0] &&
+            buf.data[i + 1] === OUTLINE_RGB[1] &&
+            buf.data[i + 2] === OUTLINE_RGB[2]
+          ) {
+            outline += 1;
+          }
+        }
+      }
+      expect(opaque, `${label} opaque`).toBeGreaterThan(8);
+      expect(outline, `${label} outline`).toBeGreaterThan(4);
+    };
+
+    for (const variant of ['STANDARD', 'PLASMA', 'ACID'] as const) {
+      const frames = Array.from({ length: EXPLOSION_FRAME_COUNT }, (_, f) => renderExplosionFramePixels(f, variant));
+      frames.forEach((b, f) => checkPixelSprite(b, `BOOM ${variant} ${f}`));
+      expect(frames[0].data.some((v, i) => v !== frames[2].data[i])).toBe(true);
+    }
+
+    for (const variant of ['BLADE', 'BASH', 'GOLD_BASH', 'CLAW'] as const) {
+      for (let f = 0; f < SLASH_FRAME_COUNT; f += 1) {
+        checkPixelSprite(renderSlashFramePixels(f, 'SE', variant), `SLASH ${variant} ${f}`);
+      }
+    }
+
+    for (const variant of ['FIRE', 'PLASMA', 'ACID'] as const) {
+      for (let f = 0; f < FLAME_FRAME_COUNT; f += 1) {
+        checkPixelSprite(renderFlamePuffPixels(f, variant), `FLAME ${variant} ${f}`);
+      }
+    }
+
+    for (const variant of ['SPARK', 'PIERCE', 'DEFLECT', 'EXECUTE', 'REFLECT'] as const) {
+      for (let f = 0; f < HIT_SPARK_FRAME_COUNT; f += 1) {
+        checkPixelSprite(renderHitSparkPixels(f, 'E', variant), `SPARK ${variant} ${f}`);
+      }
+    }
+
+    for (const visual of ['RIFLE', 'GATLING', 'SNIPER', 'EXECUTIONER', 'MORTAR', 'MLRS', 'SPORE', 'SPIKE', 'PRISM', 'ROYAL'] as const) {
+      for (const dir of ALL_DIRS_8) {
+        checkPixelSprite(renderProjectilePixels(visual, dir, 0), `PROJ ${visual} ${dir}`);
+      }
+    }
   });
 
   it('renders distinct commander designs for the Nova player and the hive / lumen enemy commanders', () => {
