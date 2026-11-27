@@ -83,9 +83,9 @@ export function xpToNextLevel(level: number): number {
   return 3 + level * 3 + Math.floor((level * level) / 12);
 }
 
-/** 분대 레벨 = 정원 (레벨 + 1명) */
+/** 분대 레벨 = 정원 (Lv1 1명 → Lv5 5명) */
 export function squadHeadcount(level: number): number {
-  return level + 1;
+  return level;
 }
 
 export function squadLevelDamageMult(level: number): number {
@@ -164,13 +164,8 @@ export class SurvivorEngine {
       idleSec: 0,
     };
 
+    // 시작 분대 없이 지휘관 단독 출격. 지휘관의 추천 분대(startingSquad)는 첫 레벨업 선택지에 보장된다.
     this.ai = this.makeAIContext();
-    this.addSquad(cd.startingSquad);
-    for (const m of this.squad) {
-      const o = this.slotOffsets[m.slotIndex];
-      m.x = m.px = o.x;
-      m.y = m.py = o.y;
-    }
   }
 
   // ─────────────────────────── 공개 API ───────────────────────────
@@ -1896,6 +1891,14 @@ export class SurvivorEngine {
     }
 
     const picked: LevelUpOffer[] = [];
+    // 첫 분대 선택: 지휘관 추천 분대를 선택지 하나로 보장
+    if (this.squads.length === 0) {
+      const sig = pool.findIndex((p) => p.offer.kind === 'NEW_SQUAD' && p.offer.unitId === this.commanderDef.startingSquad);
+      if (sig >= 0 && count > 0) {
+        picked.push(pool[sig].offer);
+        pool.splice(sig, 1);
+      }
+    }
     while (picked.length < count && pool.length > 0) {
       const total = pool.reduce((s, p) => s + p.weight, 0);
       let r = this.rng() * total;

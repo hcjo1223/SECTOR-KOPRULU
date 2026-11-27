@@ -115,6 +115,7 @@ export interface CommanderDef {
   passive: CommanderPassive;
   passiveName: string;
   passiveDesc: string;
+  /** 추천 분대: 시작 시 지급하지 않고 첫 레벨업 선택지에 보장된다 */
   startingSquad: string;
   paletteOverride?: FactionPalette;
   hp: number;
