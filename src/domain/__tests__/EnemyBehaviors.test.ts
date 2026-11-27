@@ -10,6 +10,12 @@ function isolated(seed = 1): SurvivorEngine {
   return e;
 }
 
+/** 시작 분대가 없어졌으므로, 분대 보유를 전제로 한 테스트는 추천 분대를 직접 지급한다 */
+function withStarter(e: SurvivorEngine, unitId: string): SurvivorEngine {
+  e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId });
+  return e;
+}
+
 describe('Enemy behaviors', () => {
   it('charger telegraphs then dashes much faster than its walk speed', () => {
     const e = isolated(1);
@@ -103,7 +109,7 @@ describe('Enemy behaviors', () => {
   });
 
   it('overcharge appears once every slot is maxed', () => {
-    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 8);
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 8), 'ic_rifle');
     for (const id of ['ic_flamer', 'ic_mortar', 'ic_sniper']) e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId: id });
     for (const id of ['RAPID', 'AREA', 'CORE', 'SCOPE'] as const) e.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: id });
     for (const s of [...e.squads]) for (let lv = s.level + 1; lv <= 5; lv += 1) e.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: s.key, nextLevel: lv });

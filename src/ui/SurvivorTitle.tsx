@@ -126,7 +126,7 @@ const CommanderSelect: React.FC<{ faction: FactionDef; pose: Pose; onBack: () =>
                 <div className="mt-2 text-xs font-semibold" style={{ color: pal.accent }}>[{c.passiveName}]</div>
                 <p className="text-xs leading-relaxed text-slate-400">{c.passiveDesc}</p>
                 <div className="mt-2 rounded border border-slate-800 bg-slate-950/70 px-2 py-1 font-mono-tech text-[10px] text-slate-300">
-                  시작 분대: {start.name} · 체력 {c.hp} · 이동 {c.moveSpeed}
+                  추천 분대: {start.name} · 체력 {c.hp} · 이동 {c.moveSpeed}
                 </div>
               </div>
               <button

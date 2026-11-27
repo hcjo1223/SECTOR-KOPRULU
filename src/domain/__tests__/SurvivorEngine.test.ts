@@ -4,6 +4,12 @@ import { SpatialHash } from '../survivor/SpatialHash';
 import { getAllEnemies, getAllModules, getAllSquadUnits, getFactions, getSquadUnitDef, getWaveTable } from '../survivor/SurvivorCatalog';
 import { MAX_SQUADS, squadHeadcount, SurvivorEngine } from '../survivor/SurvivorEngine';
 
+/** 시작 분대가 없어졌으므로, 분대 보유를 전제로 한 테스트는 추천 분대를 직접 지급한다 */
+function withStarter(e: SurvivorEngine, unitId: string): SurvivorEngine {
+  e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId });
+  return e;
+}
+
 describe('Survivor data contracts', () => {
   it('every faction pool, commander start and evolution references existing data', () => {
     const unitIds = new Set(getAllSquadUnits().map((u) => u.id));
@@ -79,11 +85,26 @@ describe('SpatialHash', () => {
 });
 
 describe('SurvivorEngine', () => {
-  it('starts with the commander\'s starting squad at Lv1 (2 members)', () => {
+  it('starts with the commander alone; first level-up guarantees the recommended squad', () => {
     const e = new SurvivorEngine('IRONCLAD', 'ic_engineer', 1);
     expect(e.phase).toBe('RUNNING');
-    expect(e.squads.map((s) => s.key)).toEqual(['ic_sapper']);
-    expect(e.squad).toHaveLength(squadHeadcount(1));
+    expect(e.squads).toHaveLength(0);
+    expect(e.squad).toHaveLength(0);
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const r = new SurvivorEngine('IRONCLAD', 'ic_engineer', seed);
+      const offers = (r as unknown as { rollOffers(n: number): { kind: string; unitId?: string }[] }).rollOffers(3);
+      expect(offers.some((o) => o.kind === 'NEW_SQUAD' && o.unitId === 'ic_sapper')).toBe(true);
+    }
+  });
+
+  it('squad headcount equals level: Lv1 1 member -> Lv5 5 members', () => {
+    expect(squadHeadcount(1)).toBe(1);
+    expect(squadHeadcount(5)).toBe(5);
+    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 1);
+    e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId: 'ic_rifle' });
+    expect(e.squad).toHaveLength(1);
+    for (let lv = 2; lv <= 5; lv += 1) e.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_rifle', nextLevel: lv });
+    expect(e.squad).toHaveLength(5);
   });
 
   it('squad follows the commander when it moves', () => {
@@ -105,7 +126,7 @@ describe('SurvivorEngine', () => {
   });
 
   it('caps squads and modules at 4 slots and squad level adds a member', () => {
-    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 4);
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 4), 'ic_rifle');
     for (const id of ['ic_flamer', 'ic_mortar', 'ic_sniper', 'ic_shield']) e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId: id });
     expect(e.squads).toHaveLength(MAX_SQUADS);
     for (const id of ['RAPID', 'AREA', 'CORE', 'SCOPE', 'BEACON'] as const) e.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: id });
@@ -116,7 +137,7 @@ describe('SurvivorEngine', () => {
   });
 
   it('level-up offers never exceed slot limits', () => {
-    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 5);
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 5), 'ic_rifle');
     for (const id of ['ic_flamer', 'ic_mortar', 'ic_sniper']) e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId: id });
     for (const id of ['RAPID', 'AREA', 'CORE', 'SCOPE'] as const) e.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: id });
     for (let i = 0; i < 20; i += 1) {
@@ -130,7 +151,7 @@ describe('SurvivorEngine', () => {
   });
 
   it('chest evolves a Lv5 squad that owns its recipe module', () => {
-    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 6);
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 6), 'ic_rifle');
     for (let lv = 2; lv <= 5; lv += 1) e.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_rifle', nextLevel: lv });
     expect(e.canEvolve(e.getSquad('ic_rifle')!)).toBe(false);
     e.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: 'RAPID' });
@@ -152,7 +173,7 @@ describe('SurvivorEngine', () => {
   });
 
   it('mines and chain lightning damage enemies', () => {
-    const e = new SurvivorEngine('IRONCLAD', 'ic_engineer', 8);
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_engineer', 8), 'ic_sapper');
     e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId: 'ic_tesla' });
     e.step(90);
     expect(e.mines.length).toBeGreaterThan(0);
@@ -162,7 +183,9 @@ describe('SurvivorEngine', () => {
   });
 
   it('dead members vanish permanently; reinforce refills; commander death is immediate defeat', () => {
-    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 9);
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 9), 'ic_rifle');
+    e.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_rifle', nextLevel: 2 });
+    e.step(60); // 진형 슬롯에 자리 잡을 때까지
     const startCount = e.squad.length;
     const victim = e.squad[0];
     victim.hp = 1;
