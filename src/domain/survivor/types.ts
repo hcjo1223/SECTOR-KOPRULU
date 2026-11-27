@@ -259,8 +259,10 @@ export interface Actor {
   facingAngle: number;
   /** 현재 틱 이동 여부 (IDLE vs WALK 애니메이션 판정) */
   moving: boolean;
-  /** 공격 모션(ATTACK 프레임) 유지 잔여 시간 */
+  /** 공격 모션(ATTACK 1~3 프레임: 발사·반동·복귀) 유지 잔여 시간 */
   attackFlashSec: number;
+  /** 공격 예비동작(ATTACK 0 프레임) 잔여 시간: 0이 되는 순간 실제 공격이 발동한다 */
+  windupSec: number;
 }
 
 export interface CommanderState extends Actor {
@@ -295,6 +297,11 @@ export interface EnemyState {
   contactCd: number;
   hitFlashSec: number;
   attackFlashSec: number;
+  /** 접촉 공격 예비동작 잔여 시간 */
+  windupSec: number;
+  /** 예비동작이 끝날 때 물어뜯을 대상 */
+  windupTarget: Actor | null;
+  windupReflectPct: number;
   facingAngle: number;
   isElite: boolean;
   isBoss: boolean;

@@ -44,6 +44,21 @@ export const MAX_SQUAD_LEVEL = 5;
 export const MAX_MODULE_LEVEL = 5;
 
 const MELEE_LEASH_PX = 46;
+
+/** 공격 모션: 예비동작(ATTACK 0) → 발사·반동·복귀(ATTACK 1~3)에 쓰는 시간 */
+export const ATTACK_RELEASE_SEC = 0.21;
+/**
+ * 예비동작 길이: 쿨다운의 30%를 0.05~0.16초로 제한.
+ * 연사형(개틀링 0.16초)은 0.05초로 템포를 지키고, 중화기(박격포 2초+)는 0.16초로 무게감을 준다.
+ * 예비동작 시간만큼 다음 쿨다운을 미리 소모하므로 초당 피해량은 그대로다.
+ */
+export function attackWindupSec(cooldownSec: number): number {
+  return Math.max(0.05, Math.min(0.16, cooldownSec * 0.3));
+}
+/** 적 접촉 공격 예비동작: 물기 직전 몸을 젖히는 시간. 이 사이에 사거리(+4px)를 벗어나면 빗나간다 */
+const ENEMY_WINDUP_SEC = 0.12;
+const BOSS_WINDUP_SEC = 0.18;
+const ENEMY_BITE_REACH_PX = 4;
 const MAX_GEMS = 320;
 const MAX_EFFECTS = 260;
 const MAX_SLIME = 48;
@@ -419,7 +434,7 @@ export class SurvivorEngine {
       if (Math.abs(c.dirX) > 0.15) {
         c.facingX = c.dirX > 0 ? 1 : -1;
       }
-      if (c.attackFlashSec <= 0) {
+      if (c.attackFlashSec <= 0 && c.windupSec <= 0) {
         c.facingAngle = Math.atan2(c.dirY, c.dirX);
       }
       const slimeMul = this.faction.id === 'HIVE' && this.isOnSlime(c.x, c.y) ? 1.2 : 1;
@@ -436,20 +451,40 @@ export class SurvivorEngine {
     const c = this.commander;
     c.attackFlashSec = Math.max(0, c.attackFlashSec - dt);
     c.cooldown -= dt;
+    const a = c.def.attack;
+    const windup = attackWindupSec(a.cooldownSec);
+    if (c.windupSec > 0) {
+      // 예비동작 중: 표적을 계속 겨누다가 끝나는 순간 발사
+      c.windupSec -= dt;
+      const aim = this.findNearestEnemy(c.x, c.y, a.rangePx * 1.15);
+      if (aim) {
+        c.facingAngle = Math.atan2(aim.y - c.y, aim.x - c.x);
+        c.facingX = aim.x >= c.x ? 1 : -1;
+      }
+      if (c.windupSec > 0) {
+        return;
+      }
+      c.windupSec = 0;
+      if (!aim) {
+        c.cooldown = 0.1;
+        return;
+      }
+      c.attackFlashSec = ATTACK_RELEASE_SEC;
+      const dmg = a.damage * (1 + 0.1 * this.moduleLevel('CORE')) * this.overchargeMul;
+      this.spawnProjectile(c.x, c.y, aim.x - c.x, aim.y - c.y, a, dmg, a.rangePx * 1.15, this.paletteFor(c.def).accent);
+      c.cooldown = Math.max(0.02, a.cooldownSec - windup);
+      return;
+    }
     if (c.cooldown > 0) {
       return;
     }
-    const a = c.def.attack;
     const target = this.findNearestEnemy(c.x, c.y, a.rangePx);
     if (!target) {
       return;
     }
     c.facingAngle = Math.atan2(target.y - c.y, target.x - c.x);
     c.facingX = target.x >= c.x ? 1 : -1;
-    c.attackFlashSec = 0.22;
-    const dmg = a.damage * (1 + 0.1 * this.moduleLevel('CORE')) * this.overchargeMul;
-    this.spawnProjectile(c.x, c.y, target.x - c.x, target.y - c.y, a, dmg, a.rangePx, this.paletteFor(c.def).accent);
-    c.cooldown = a.cooldownSec;
+    c.windupSec = windup;
   }
 
   // ─────────────────────────── 진영 특성 ───────────────────────────
@@ -523,6 +558,7 @@ export class SurvivorEngine {
       slotIndex: 0,
       cooldown: this.rng() * def.attack.cooldownSec,
       attackFlashSec: 0,
+      windupSec: 0,
     };
     this.squad.push(m);
     return m;
@@ -696,10 +732,10 @@ export class SurvivorEngine {
         if (Math.abs(dx) > 1) {
           m.facingX = dx > 0 ? 1 : -1;
         }
-        if (m.attackFlashSec <= 0 && dist > 1.5) {
+        if (m.attackFlashSec <= 0 && m.windupSec <= 0 && dist > 1.5) {
           m.facingAngle = Math.atan2(dy, dx);
         }
-      } else if (m.attackFlashSec <= 0 && a.targeting === 'FACING') {
+      } else if (m.attackFlashSec <= 0 && m.windupSec <= 0 && a.targeting === 'FACING') {
         m.facingAngle = Math.atan2(c.dirY, c.dirX);
       }
 
@@ -720,13 +756,33 @@ export class SurvivorEngine {
         }
       }
 
-      // 공격
+      // 공격: 쿨다운 완료 + 표적 확인 → 예비동작 → 발동
       m.attackFlashSec = Math.max(0, m.attackFlashSec - dt);
       const gunnery = passive === 'GUNNERY' && (a.style === 'PROJECTILE' || a.style === 'PIERCE') ? 1.15 : 1;
-      m.cooldown -= dt * (onSlime ? 1.3 : 1) * gunnery;
-      if (m.cooldown > 0) {
+      const tempo = (onSlime ? 1.3 : 1) * gunnery;
+      m.cooldown -= dt * tempo;
+      const cdFull = a.cooldownSec * rapid;
+      const windup = attackWindupSec(cdFull);
+      if (m.windupSec <= 0) {
+        if (m.cooldown > 0) {
+          continue;
+        }
+        const aim = this.probeSquadAttack(m, a, range);
+        if (!aim) {
+          continue;
+        }
+        if (aim.angle !== null) {
+          m.facingAngle = aim.angle;
+          m.facingX = Math.cos(aim.angle) >= 0 ? 1 : -1;
+        }
+        m.windupSec = windup;
         continue;
       }
+      m.windupSec -= dt * tempo;
+      if (m.windupSec > 0) {
+        continue;
+      }
+      m.windupSec = 0;
       let dmg = a.damage * squadLevelDamageMult(sqLevel) * coreMul * (entrenched ? 1.35 : 1);
       if (passive === 'VANGUARD' && moving && a.targeting === 'FACING') {
         dmg *= 1.25;
@@ -738,9 +794,39 @@ export class SurvivorEngine {
         dmg *= 2;
       }
       if (this.performSquadAttack(m, a, dmg, range)) {
-        m.cooldown = a.cooldownSec * rapid;
-        m.attackFlashSec = 0.22;
+        m.cooldown = Math.max(0.02, cdFull - windup);
+        m.attackFlashSec = ATTACK_RELEASE_SEC;
+      } else {
+        // 예비동작 사이 표적이 사라짐: 잠시 뒤 다시 노린다
+        m.cooldown = 0.1;
       }
+    }
+  }
+
+  /** 예비동작을 시작할 만한 표적이 있는지 (공격 방식별 발동 조건과 동일). 있으면 조준 각도 */
+  private probeSquadAttack(m: SquadMemberState, a: AttackProfile, range: number): { angle: number | null } | null {
+    const areaMul = 1 + 0.1 * this.moduleLevel('AREA');
+    const toward = (t: { x: number; y: number } | null): { angle: number | null } | null =>
+      t ? { angle: Math.atan2(t.y - m.y, t.x - m.x) } : null;
+    switch (a.style) {
+      case 'HEAL':
+        return toward(this.findMostWoundedAlly(m.x, m.y, range));
+      case 'PULSE':
+        return toward(this.findNearestEnemy(m.x, m.y, range * areaMul));
+      case 'MELEE':
+        return toward(this.findNearestEnemy(m.x, m.y, range + m.radius));
+      case 'CONE':
+      case 'PROJECTILE':
+      case 'PIERCE': {
+        const { aimX, aimY, hasTarget } = this.resolveAim(m, a, a.style === 'CONE' ? range * areaMul : range);
+        return hasTarget ? { angle: Math.atan2(aimY, aimX) } : null;
+      }
+      case 'CHAIN':
+        return toward(this.findTarget(m.x, m.y, range, a.priority ?? 'NEAREST'));
+      case 'MINE':
+        return this.mines.length < MAX_MINES ? { angle: null } : null;
+      default:
+        return { angle: null };
     }
   }
 
@@ -1072,6 +1158,9 @@ export class SurvivorEngine {
       contactCd: 0,
       hitFlashSec: 0,
       attackFlashSec: 0,
+      windupSec: 0,
+      windupTarget: null,
+      windupReflectPct: 0,
       facingAngle: Math.PI / 2,
       isElite: elite,
       isBoss: boss,
@@ -1242,6 +1331,12 @@ export class SurvivorEngine {
       e.contactCd -= dt;
       e.hitFlashSec = Math.max(0, e.hitFlashSec - dt);
       e.attackFlashSec = Math.max(0, e.attackFlashSec - dt);
+      if (e.windupSec > 0) {
+        this.resolveEnemyWindup(e, dt);
+        if (!e.alive) {
+          continue;
+        }
+      }
 
       e.sinceHitSec += dt;
       if (e.maxShield > 0 && e.sinceHitSec > 3 && e.shield < e.maxShield) {
@@ -1317,6 +1412,32 @@ export class SurvivorEngine {
     }
   }
 
+  /** 적 예비동작 종료: 대상이 아직 사거리 안에 있으면 물어뜯는다 */
+  private resolveEnemyWindup(e: EnemyState, dt: number): void {
+    e.windupSec -= dt;
+    const a = e.windupTarget;
+    if (a && a.alive) {
+      e.facingAngle = Math.atan2(a.y - e.y, a.x - e.x);
+    }
+    if (e.windupSec > 0) {
+      return;
+    }
+    e.windupSec = 0;
+    e.windupTarget = null;
+    if (!a || !a.alive) {
+      return;
+    }
+    const reach = e.radius + a.radius + ENEMY_BITE_REACH_PX;
+    if ((a.x - e.x) ** 2 + (a.y - e.y) ** 2 > reach * reach) {
+      return;
+    }
+    this.damageAlly(a, e.damage);
+    e.attackFlashSec = ATTACK_RELEASE_SEC;
+    if (e.windupReflectPct > 0) {
+      this.damageEnemy(e, e.damage * e.windupReflectPct, 1, 0);
+    }
+  }
+
   private collideEnemyWithAlly(e: EnemyState, a: Actor, allyShare: number, reflectPct: number): void {
     if (!a.alive || !e.alive) {
       return;
@@ -1328,14 +1449,13 @@ export class SurvivorEngine {
     if (d2 >= (minD + 1.5) * (minD + 1.5)) {
       return;
     }
-    if (e.contactCd <= 0 && e.damage > 0) {
-      this.damageAlly(a, e.damage);
+    if (e.contactCd <= 0 && e.damage > 0 && e.windupSec <= 0) {
+      // 접촉 → 예비동작 시작 (쿨다운은 지금부터 돌아 공격 주기는 그대로)
       e.contactCd = e.def.contactCooldownSec;
-      e.attackFlashSec = 0.22;
+      e.windupSec = e.isBoss ? BOSS_WINDUP_SEC : ENEMY_WINDUP_SEC;
+      e.windupTarget = a;
+      e.windupReflectPct = reflectPct;
       e.facingAngle = Math.atan2(a.y - e.y, a.x - e.x);
-      if (reflectPct > 0) {
-        this.damageEnemy(e, e.damage * reflectPct, 1, 0);
-      }
     }
     if (d2 < minD * minD) {
       const d = Math.sqrt(d2) || 0.01;
@@ -1997,6 +2117,7 @@ export class SurvivorEngine {
       facingAngle: Math.PI / 2,
       moving: false,
       attackFlashSec: 0,
+      windupSec: 0,
     };
   }
 }
