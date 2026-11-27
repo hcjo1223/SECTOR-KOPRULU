@@ -1,6 +1,7 @@
 import enemiesJson from '../../data/survivor_enemies.json';
 import factionsJson from '../../data/survivor_factions.json';
 import modulesJson from '../../data/survivor_modules.json';
+import relicsJson from '../../data/survivor_relics.json';
 import unitsJson from '../../data/survivor_units.json';
 import wavesJson from '../../data/survivor_waves.json';
 import type {
@@ -10,6 +11,8 @@ import type {
   CommanderDef,
   ModuleDef,
   ModuleId,
+  RelicDef,
+  RelicId,
   SquadUnitDef,
   WaveTable,
 } from './types';
@@ -19,6 +22,7 @@ const UNITS = unitsJson as SquadUnitDef[];
 const ENEMIES = enemiesJson as EnemyDef[];
 const WAVES = wavesJson as WaveTable;
 const MODULES = modulesJson as ModuleDef[];
+const RELICS = relicsJson as RelicDef[];
 
 const unitById = new Map<string, SquadUnitDef>(UNITS.map((u) => [u.id, u]));
 const enemyById = new Map<string, EnemyDef>(ENEMIES.map((e) => [e.id, e]));
@@ -78,4 +82,16 @@ export function getModuleDef(id: ModuleId): ModuleDef {
     throw new Error(`Unknown module: ${id}`);
   }
   return m;
+}
+
+export function getAllRelics(): readonly RelicDef[] {
+  return RELICS;
+}
+
+export function getRelic(id: RelicId): RelicDef {
+  const r = RELICS.find((x) => x.id === id);
+  if (!r) {
+    throw new Error(`Unknown relic: ${id}`);
+  }
+  return r;
 }

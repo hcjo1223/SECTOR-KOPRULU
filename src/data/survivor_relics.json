@@ -1,0 +1,12 @@
+[
+  { "id": "NANO_MEDKIT", "name": "나노 응급팩", "icon": "✚", "summary": "지휘관이 초당 체력 1.5를 회복한다." },
+  { "id": "AP_ROUNDS", "name": "철갑탄 탄창", "icon": "➶", "summary": "모든 분대·포탑 탄환이 적을 1기 더 관통한다 (폭발탄 제외)." },
+  { "id": "DATALINK", "name": "전술 데이터링크", "icon": "⌁", "summary": "모든 분대와 포탑의 공격 속도 +12%." },
+  { "id": "GENERATOR", "name": "과급 발전기", "icon": "⚡", "summary": "모든 공격 피해 +12%." },
+  { "id": "REACTIVE_PLATING", "name": "반응 장갑", "icon": "◈", "summary": "지휘관과 부대원이 받는 피해 -12%." },
+  { "id": "SALVAGE_DRONE", "name": "회수 드론", "icon": "◎", "summary": "획득 경험치 +15%, 수집 반경 +40%." },
+  { "id": "RESERVE_TROOPS", "name": "예비 병력", "icon": "⚑", "summary": "18초마다 결원이 있는 분대에 1명을 증원한다." },
+  { "id": "FORTRESS_DOCTRINE", "name": "요새 교리", "icon": "▣", "summary": "[포진] 공격력 보너스 +35% → +60%." },
+  { "id": "EXECUTION_PROTOCOL", "name": "처형 프로토콜", "icon": "✖", "summary": "체력 10% 이하로 떨어진 일반·엘리트 적은 즉사한다." },
+  { "id": "CHAIN_REACTION", "name": "연쇄 반응탄", "icon": "✸", "summary": "적이 쓰러질 때 18% 확률로 폭발해 주변(반경 26px)에 피해를 준다." }
+]

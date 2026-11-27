@@ -1,6 +1,6 @@
 import { shellReduction, stepEnemyAI, type EnemyAIContext } from './EnemyBehaviors';
 import { assignSlots, buildSlotOffsets, capacityForRings, MAX_RINGS } from './Formation';
-import { getCommander, getEnemyDef, getFaction, getSquadUnitDef, getWaveTable } from './SurvivorCatalog';
+import { getAllRelics, getCommander, getEnemyDef, getFaction, getSquadUnitDef, getWaveTable } from './SurvivorCatalog';
 import { SpatialHash } from './SpatialHash';
 import type {
   Actor,
@@ -21,6 +21,8 @@ import type {
   HazardState,
   HudSnapshot,
   LevelUpOffer,
+  MetaBonuses,
+  RelicId,
   TurretProfile,
   TurretState,
   ModuleId,
@@ -63,6 +65,23 @@ const FORTIFY_SHIELD_FILL_PER_SEC = 0.25;
 // 돌격 지휘관 [선봉 돌파]: 이동 중에도 포진 공격력 유지, 이동속도, 전열 피해 감소
 const VANGUARD_MOVE_SPEED_MUL = 1.15;
 export const VANGUARD_FRONT_DAMAGE_TAKEN_MUL = 0.75;
+
+/** 유물 수치 */
+const RELIC_MEDKIT_REGEN = 1.5;
+const RELIC_DATALINK_TEMPO = 1.12;
+const RELIC_GENERATOR_DMG = 1.12;
+const RELIC_PLATING_TAKEN = 0.88;
+const RELIC_SALVAGE_XP = 1.15;
+const RELIC_SALVAGE_PICKUP = 1.4;
+const RELIC_RESERVE_INTERVAL_SEC = 18;
+const RELIC_FORTRESS_ENTRENCH_DMG = 1.6;
+const RELIC_EXECUTE_PCT = 0.1;
+const RELIC_CHAIN_CHANCE = 0.18;
+const RELIC_CHAIN_RADIUS = 26;
+/** 한 번에 보여주는 유물 선택지 수 */
+const RELIC_CHOICES = 3;
+
+export const NO_META: MetaBonuses = { maxHpMul: 1, damageMul: 1, xpMul: 1, pickupMul: 1, extraRerolls: 0 };
 
 /** 포탑: 동시 유지 전체 상한 */
 const MAX_TURRETS = 40;
@@ -165,6 +184,14 @@ export class SurvivorEngine {
   public rerollsLeft = 0;
   /** 레벨업마다 주어지는 다시 뽑기 횟수 */
   public rerollsPerLevelUp = 1;
+  /** 보유 유물과, 유물 선택 화면의 선택지 */
+  public readonly relics: RelicId[] = [];
+  public relicOffers: RelicId[] = [];
+  /** 처치한 중간 보스 수 (메타 보상 계산용) */
+  public minibossKills = 0;
+  private pendingRelics = 0;
+  private reserveTimer = 0;
+  private readonly meta: MetaBonuses;
 
   private readonly rng: () => number;
   private readonly hash = new SpatialHash(32);
@@ -183,7 +210,9 @@ export class SurvivorEngine {
   private bannerSec = 0;
   private readonly ai: EnemyAIContext;
 
-  constructor(factionId: FactionId, commanderId?: string, seed: number = Date.now()) {
+  constructor(factionId: FactionId, commanderId?: string, seed: number = Date.now(), meta: Partial<MetaBonuses> = {}) {
+    this.meta = { ...NO_META, ...meta };
+    this.rerollsPerLevelUp = 1 + this.meta.extraRerolls;
     this.faction = getFaction(factionId);
     this.commanderDef = getCommander(factionId, commanderId);
     this.waves = getWaveTable();
@@ -192,7 +221,7 @@ export class SurvivorEngine {
 
     const cd = this.commanderDef;
     this.commander = {
-      ...this.makeActor(0, 0, cd.radius, cd.hp, cd.shield),
+      ...this.makeActor(0, 0, cd.radius, cd.hp * this.meta.maxHpMul, cd.shield),
       def: cd,
       cooldown: 0,
       dirX: 1,
@@ -236,7 +265,31 @@ export class SurvivorEngine {
   }
 
   public get pickupRadius(): number {
-    return this.commanderDef.pickupRadius * (1 + 0.2 * this.moduleLevel('BEACON'));
+    return (
+      this.commanderDef.pickupRadius *
+      (1 + 0.2 * this.moduleLevel('BEACON')) *
+      this.meta.pickupMul *
+      (this.hasRelic('SALVAGE_DRONE') ? RELIC_SALVAGE_PICKUP : 1)
+    );
+  }
+
+  /** 체력 배율: 강화 장갑 모듈 × 본부 업그레이드 */
+  public hpMul(): number {
+    return (1 + 0.15 * this.moduleLevel('ARMOR')) * this.meta.maxHpMul;
+  }
+
+  /** 모든 아군 공격 피해 배율: 증폭 코어 × 과충전 × 과급 발전기 × 본부 업그레이드 */
+  public damageMul(): number {
+    return (
+      (1 + 0.1 * this.moduleLevel('CORE')) *
+      this.overchargeMul *
+      (this.hasRelic('GENERATOR') ? RELIC_GENERATOR_DMG : 1) *
+      this.meta.damageMul
+    );
+  }
+
+  public hasRelic(id: RelicId): boolean {
+    return this.relics.includes(id);
   }
 
   public get speedMul(): number {
@@ -326,6 +379,35 @@ export class SurvivorEngine {
     return true;
   }
 
+  /** 유물 선택 → 진행 재개 (남은 레벨업·상자가 있으면 이어서 연다) */
+  public chooseRelic(index: number): boolean {
+    if (this.phase !== 'RELIC') {
+      return false;
+    }
+    const id = this.relicOffers[index];
+    if (!id) {
+      return false;
+    }
+    this.relics.push(id);
+    this.relicOffers = [];
+    this.phase = 'RUNNING';
+    this.maybeOpenChestOrLevelUp();
+    return true;
+  }
+
+  /** 테스트·디버그용: 유물 직접 지급 */
+  public grantRelic(id: RelicId): void {
+    if (!this.relics.includes(id)) {
+      this.relics.push(id);
+    }
+  }
+
+  /** 테스트·디버그용: 유물 선택 화면 열기 */
+  public grantRelicChoice(): void {
+    this.pendingRelics += 1;
+    this.maybeOpenChestOrLevelUp();
+  }
+
   /** 보급 상자 결과 확인 → 진행 재개 */
   public confirmChest(): boolean {
     if (this.phase !== 'CHEST') {
@@ -371,6 +453,9 @@ export class SurvivorEngine {
       })),
       modules: this.modules.map((m) => ({ ...m })),
       chestResult: this.chestResult,
+      relics: [...this.relics],
+      relicOffers: [...this.relicOffers],
+      minibossKills: this.minibossKills,
     };
   }
 
@@ -507,7 +592,7 @@ export class SurvivorEngine {
         return;
       }
       c.attackFlashSec = ATTACK_RELEASE_SEC;
-      const dmg = a.damage * (1 + 0.1 * this.moduleLevel('CORE')) * this.overchargeMul;
+      const dmg = a.damage * this.damageMul();
       this.spawnProjectile(c.x, c.y, aim.x - c.x, aim.y - c.y, a, dmg, a.rangePx * 1.15, this.paletteFor(c.def).accent, 'RIFLE', false, 0, this.commanderDef.passive === 'GUNNERY');
       c.cooldown = Math.max(0.02, a.cooldownSec - windup);
       return;
@@ -547,7 +632,7 @@ export class SurvivorEngine {
   private spawnMember(s: SquadState): SquadMemberState {
     const def = s.def;
     const c = this.commander;
-    const hpMult = 1 + 0.15 * this.moduleLevel('ARMOR');
+    const hpMult = this.hpMul();
     const actor = this.makeActor(c.x + (this.rng() - 0.5) * 8, c.y + (this.rng() - 0.5) * 8, def.radius, def.hp * hpMult, def.shield);
     const m: SquadMemberState = {
       ...actor,
@@ -608,7 +693,7 @@ export class SurvivorEngine {
       m.alive = false;
       m.hp = 0;
     }
-    const hpMult = 1 + 0.15 * this.moduleLevel('ARMOR');
+    const hpMult = this.hpMul();
     for (const m of keep) {
       m.def = into;
       m.radius = into.radius;
@@ -626,7 +711,7 @@ export class SurvivorEngine {
 
   /** 강화 장갑 레벨 변화 시 최대 체력 재계산 */
   private refreshMaxHp(): void {
-    const hpMult = 1 + 0.15 * this.moduleLevel('ARMOR');
+    const hpMult = this.hpMul();
     for (const m of this.squad) {
       const next = m.baseMaxHp * hpMult;
       m.hp += next - m.maxHp;
@@ -660,6 +745,18 @@ export class SurvivorEngine {
   }
 
   private updateReinforcements(dt: number): void {
+    if (this.hasRelic('RESERVE_TROOPS')) {
+      this.reserveTimer += dt;
+      if (this.reserveTimer >= RELIC_RESERVE_INTERVAL_SEC) {
+        this.reserveTimer = 0;
+        const target = this.squads.find((o) => this.missingInSquad(o) > 0);
+        if (target) {
+          const m = this.spawnMember(target);
+          this.addEffect('LEVEL', m.x, m.y, 0, 12, 0, 0.5, '#ffcf4a');
+          this.reassignSlots();
+        }
+      }
+    }
     for (const s of this.squads) {
       const interval = s.def.reinforceIntervalSec;
       if (!interval || this.aliveInSquad(s.key) === 0) {
@@ -708,8 +805,10 @@ export class SurvivorEngine {
     const rapid = 1 - 0.07 * this.moduleLevel('RAPID');
     const rangeMul = (1 + 0.08 * this.moduleLevel('SCOPE')) * (entrenched ? ENTRENCH_RANGE_MUL : 1);
     // 돌격 지휘관은 이동 중에도 포진 공격력 보너스를 유지한다 (사거리 보너스는 정지 시만)
-    const entrenchDmg = entrenched || passive === 'VANGUARD' ? ENTRENCH_DAMAGE_MUL : 1;
-    const coreMul = (1 + 0.1 * this.moduleLevel('CORE')) * this.overchargeMul;
+    const entrenchBonus = this.hasRelic('FORTRESS_DOCTRINE') ? RELIC_FORTRESS_ENTRENCH_DMG : ENTRENCH_DAMAGE_MUL;
+    const entrenchDmg = entrenched || passive === 'VANGUARD' ? entrenchBonus : 1;
+    const datalink = this.hasRelic('DATALINK') ? RELIC_DATALINK_TEMPO : 1;
+    const coreMul = this.damageMul();
     const critChance = 0.05 * this.moduleLevel('SCOPE');
     const speedMul = this.speedMul;
 
@@ -775,7 +874,7 @@ export class SurvivorEngine {
       // 공격: 쿨다운 완료 + 표적 확인 → 예비동작 → 발동 (연속 분사형은 분사 → 냉각)
       m.attackFlashSec = Math.max(0, m.attackFlashSec - dt);
       const overdrive = passive === 'FORTIFY' && entrenched && a.style === 'CHAIN' ? FORTIFY_OVERDRIVE_MUL : 1;
-      const tempo = overdrive;
+      const tempo = overdrive * datalink;
       const computeDmg = (): number => {
         let dmg = a.damage * squadLevelDamageMult(sqLevel) * coreMul * entrenchDmg;
         if (a.style !== 'HEAL' && critChance > 0 && this.rng() < critChance) {
@@ -988,7 +1087,9 @@ export class SurvivorEngine {
           const ang = base + (k - (shots - 1) / 2) * spread;
           const dx = Math.cos(ang);
           const dy = Math.sin(ang);
-          const pierceBonus = this.commanderDef.passive === 'GUNNERY' && !splashA.splashRadiusPx ? GUNNERY_PIERCE_BONUS : 0;
+          const pierceBonus = splashA.splashRadiusPx
+            ? 0
+            : (this.commanderDef.passive === 'GUNNERY' ? GUNNERY_PIERCE_BONUS : 0) + (this.hasRelic('AP_ROUNDS') ? 1 : 0);
           this.spawnProjectile(m.x, m.y, dx, dy, splashA, dmg, range, projCol, visual, evolved, pierceBonus);
           if (visual === 'SNIPER' || visual === 'EXECUTIONER') {
             const trailLen = Math.min(range * 0.65, visual === 'EXECUTIONER' ? 96 : 68);
@@ -1362,6 +1463,17 @@ export class SurvivorEngine {
         });
       },
       addHazard: (x, y, r, arm, life, dps, burst, color) => this.addHazard(x, y, r, arm, life, dps, burst, color),
+      countEnemiesNear: (x, y, r, behavior) => {
+        const cand = this.hash.query(x, y, r, this.scratch2);
+        let n = 0;
+        for (let k = 0; k < cand.length; k += 1) {
+          const o = this.enemies[cand[k]];
+          if (o && o.alive && o.behavior === behavior && (o.x - x) ** 2 + (o.y - y) ** 2 <= r * r) {
+            n += 1;
+          }
+        }
+        return n;
+      },
       shieldEnemiesNear: (x, y, r, amount) => {
         for (const o of this.enemies) {
           if (o.alive && !o.isBoss && Math.hypot(o.x - x, o.y - y) <= r) {
@@ -1664,7 +1776,12 @@ export class SurvivorEngine {
       if (e.isBoss && !e.isFinalBoss) {
         this.chests.push({ id: this.nextId++, x: e.x - 8, y: e.y, alive: true });
         this.chests.push({ id: this.nextId++, x: e.x + 8, y: e.y, alive: true });
-        this.announce(`${e.def.name} 격파! 보급 상자 2개`);
+        this.minibossKills += 1;
+        this.pendingRelics += 1;
+        this.announce(`${e.def.name} 격파! 유물 획득 · 보급 상자 2개`);
+      }
+      if (this.hasRelic('CHAIN_REACTION') && !e.isBoss && this.rng() < RELIC_CHAIN_CHANCE) {
+        this.explode(e.x, e.y, RELIC_CHAIN_RADIUS, 14 * this.damageMul(), 0, 0);
       }
       const splits = e.behavior === 'SPLITTER' ? 3 : 0;
       const affixSplits = e.affixes.includes('SPLIT') ? 4 : 0;
@@ -1823,8 +1940,11 @@ export class SurvivorEngine {
   }
 
   private updateTurrets(dt: number): void {
-    const overdrive = this.commanderDef.passive === 'FORTIFY' && this.isEntrenched ? FORTIFY_OVERDRIVE_MUL : 1;
+    const overdrive =
+      (this.commanderDef.passive === 'FORTIFY' && this.isEntrenched ? FORTIFY_OVERDRIVE_MUL : 1) *
+      (this.hasRelic('DATALINK') ? RELIC_DATALINK_TEMPO : 1);
     const areaMul = 1 + 0.1 * this.moduleLevel('AREA');
+    const apRounds = this.hasRelic('AP_ROUNDS') ? 1 : 0;
     let w = 0;
     for (let i = 0; i < this.turrets.length; i += 1) {
       const t = this.turrets[i];
@@ -1862,7 +1982,8 @@ export class SurvivorEngine {
             tp.rangePx,
             t.evolved ? '#ffcf4a' : '#9fe8ff',
             grenade ? 'MORTAR' : t.evolved ? 'GATLING' : 'RIFLE',
-            t.evolved
+            t.evolved,
+            grenade ? 0 : apRounds
           );
           t.flashSec = 0.1;
           t.fireCd = tp.fireCooldownSec;
@@ -1943,7 +2064,8 @@ export class SurvivorEngine {
     }
     e.hp -= amount;
     e.hitFlashSec = 0.1;
-    if (executePct > 0 && !e.isBoss && e.hp > 0 && e.hp / e.maxHp <= executePct) {
+    const execPct = this.hasRelic('EXECUTION_PROTOCOL') ? Math.max(executePct, RELIC_EXECUTE_PCT) : executePct;
+    if (execPct > 0 && !e.isBoss && e.hp > 0 && e.hp / e.maxHp <= execPct) {
       e.hp = 0;
       this.addEffect('EXECUTE', e.x, e.y, 0, e.radius + 9, 0, 0.3, '#ff3858', e.x, e.y, true);
     }
@@ -2007,6 +2129,9 @@ export class SurvivorEngine {
     let rest = dmg;
     if (this.commanderDef.passive === 'VANGUARD' && 'squadKey' in a && (a as SquadMemberState).def.role === 'FRONT') {
       rest *= VANGUARD_FRONT_DAMAGE_TAKEN_MUL;
+    }
+    if (this.hasRelic('REACTIVE_PLATING')) {
+      rest *= RELIC_PLATING_TAKEN;
     }
     if (a.shield > 0) {
       const absorbed = Math.min(a.shield, rest);
@@ -2156,7 +2281,7 @@ export class SurvivorEngine {
   }
 
   private gainXp(amount: number): void {
-    this.xp += amount;
+    this.xp += amount * this.meta.xpMul * (this.hasRelic('SALVAGE_DRONE') ? RELIC_SALVAGE_XP : 1);
     while (this.xp >= this.xpToNext) {
       this.xp -= this.xpToNext;
       this.level += 1;
@@ -2168,6 +2293,22 @@ export class SurvivorEngine {
   private maybeOpenChestOrLevelUp(): void {
     if (this.phase !== 'RUNNING') {
       return;
+    }
+    if (this.pendingRelics > 0) {
+      this.pendingRelics -= 1;
+      const pool = getAllRelics()
+        .map((r) => r.id)
+        .filter((id) => !this.relics.includes(id));
+      const offers: RelicId[] = [];
+      while (offers.length < RELIC_CHOICES && pool.length > 0) {
+        offers.push(pool.splice(Math.floor(this.rng() * pool.length), 1)[0]);
+      }
+      if (offers.length > 0) {
+        this.relicOffers = offers;
+        this.phase = 'RELIC';
+        this.addEffect('EVOLVE', this.commander.x, this.commander.y, 0, 24, 0, 0.8, '#ffcf4a');
+        return;
+      }
     }
     if (this.pendingChests > 0) {
       this.pendingChests -= 1;
@@ -2217,8 +2358,9 @@ export class SurvivorEngine {
     };
     const c = this.commander;
     regenShield(c);
-    if (this.regenPerSec > 0 && c.alive) {
-      c.hp = Math.min(c.maxHp, c.hp + this.regenPerSec * dt);
+    const regen = this.regenPerSec + (this.hasRelic('NANO_MEDKIT') ? RELIC_MEDKIT_REGEN : 0);
+    if (regen > 0 && c.alive) {
+      c.hp = Math.min(c.maxHp, c.hp + regen * dt);
     }
     for (const m of this.squad) {
       regenShield(m);

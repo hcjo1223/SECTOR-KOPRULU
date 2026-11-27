@@ -21,6 +21,7 @@ interface SurvivorStoreState {
   setPaused: (paused: boolean) => void;
   chooseOffer: (index: number) => void;
   rerollOffer: (index: number) => void;
+  chooseRelic: (index: number) => void;
   syncFromEngine: () => void;
 }
 
@@ -83,6 +84,13 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
     }
   },
 
+  chooseRelic: (index) => {
+    const engine = get().engine;
+    if (engine && engine.chooseRelic(index)) {
+      set({ hud: engine.getHud(), offers: [...engine.offers] });
+    }
+  },
+
   confirmChest: () => {
     const engine = get().engine;
     if (engine && engine.confirmChest()) {
@@ -126,6 +134,10 @@ function fastForwardFromUrl(engine: SurvivorEngine): void {
     }
     if (engine.phase === 'CHEST') {
       engine.confirmChest();
+      continue;
+    }
+    if (engine.phase === 'RELIC') {
+      engine.chooseRelic(0);
       continue;
     }
     c.hp = c.maxHp;

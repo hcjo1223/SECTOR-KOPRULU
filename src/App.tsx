@@ -3,6 +3,7 @@ import { SurvivorApp } from './core/SurvivorApp';
 import { useSurvivorStore } from './store/useSurvivorStore';
 import { ChestModal } from './ui/ChestModal';
 import { LevelUpModal } from './ui/LevelUpModal';
+import { RelicModal } from './ui/RelicModal';
 import { ResultModal } from './ui/ResultModal';
 import { SurvivorHUD } from './ui/SurvivorHUD';
 import { SurvivorTitle } from './ui/SurvivorTitle';
@@ -35,6 +36,7 @@ export const App: React.FC = () => {
             <SurvivorHUD />
             <LevelUpModal />
             <ChestModal />
+            <RelicModal />
             <ResultModal />
           </>
         )}

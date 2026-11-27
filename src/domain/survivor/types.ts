@@ -187,7 +187,15 @@ export type EnemyBehavior =
   | 'NEST'
   | 'QUEEN'
   | 'SPIRE'
-  | 'MATRON';
+  | 'MATRON'
+  /** 적응 군체: 동족이 뭉쳐 있으면 광란해 빨라지는 무리 */
+  | 'SWARM'
+  /** 적응 군체: 3갈래 가시 일제 사격 */
+  | 'VOLLEY'
+  /** 성휘 교단: 정면 방패 + 주기적으로 주변 아군에 보호막 */
+  | 'WARDEN'
+  /** 성휘 교단: 조준선 예고 후 광자탄 3연사 */
+  | 'PRISM';
 
 export type EliteAffix = 'SWIFT' | 'SPLIT' | 'AURA' | 'SHIELDED' | 'VOLATILE';
 
@@ -247,7 +255,36 @@ export type ChestResult =
   | { kind: 'UPGRADE'; offer: LevelUpOffer }
   | { kind: 'RESUPPLY' };
 
-export type RunPhase = 'RUNNING' | 'LEVEL_UP' | 'CHEST' | 'DEFEAT' | 'VICTORY';
+export type RunPhase = 'RUNNING' | 'LEVEL_UP' | 'CHEST' | 'RELIC' | 'DEFEAT' | 'VICTORY';
+
+/** 유물: 중간 보스를 쓰러뜨리면 3개 중 1개를 고르는 런 한정 영구 효과 */
+export type RelicId =
+  | 'NANO_MEDKIT'
+  | 'AP_ROUNDS'
+  | 'DATALINK'
+  | 'GENERATOR'
+  | 'REACTIVE_PLATING'
+  | 'SALVAGE_DRONE'
+  | 'RESERVE_TROOPS'
+  | 'FORTRESS_DOCTRINE'
+  | 'EXECUTION_PROTOCOL'
+  | 'CHAIN_REACTION';
+
+export interface RelicDef {
+  id: RelicId;
+  name: string;
+  icon: string;
+  summary: string;
+}
+
+/** 메타 성장(본부 업그레이드)이 런에 주는 보너스 */
+export interface MetaBonuses {
+  maxHpMul: number;
+  damageMul: number;
+  xpMul: number;
+  pickupMul: number;
+  extraRerolls: number;
+}
 
 /** 분대 = 같은 병종 부대원 묶음. 레벨 = 정원(레벨+1명) */
 export interface SquadState {
@@ -525,6 +562,9 @@ export interface HudSnapshot {
   squads: SquadHud[];
   modules: ModuleState[];
   chestResult: ChestResult | null;
+  relics: RelicId[];
+  relicOffers: RelicId[];
+  minibossKills: number;
 }
 
 export interface SquadHud {
