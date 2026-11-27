@@ -149,7 +149,7 @@ export class SurvivorRenderer {
     }
     if (engine.isEntrenched) {
       const pulse = 0.25 + 0.1 * Math.sin(this.timeSec * 6);
-      gf.circle(Math.round(camX), Math.round(camY), 20 * engine.rings + 10).stroke({ width: 1, color: hexNum(palette.accent), alpha: pulse });
+      gf.circle(Math.round(camX), Math.round(camY), 20 * engine.rings + 14).stroke({ width: 1, color: hexNum(palette.accent), alpha: pulse });
     }
     // 바라보는 방향 화살표 (지휘관 방향형 부대원의 조준선)
     const fx = c.dirX;
@@ -163,6 +163,23 @@ export class SurvivorRenderer {
       .closePath()
       .fill({ color: 0xf2e27a, alpha: 0.8 });
 
+    // ── 불길 장판 · 지뢰
+    for (const z of engine.zones) {
+      const a = Math.min(1, z.lifeSec / 0.6);
+      gf.circle(Math.round(z.x), Math.round(z.y), z.radius).fill({ color: 0xff6a2a, alpha: 0.22 * a });
+      gf.circle(Math.round(z.x), Math.round(z.y), z.radius * 0.55).fill({ color: 0xffc04a, alpha: 0.18 * a });
+    }
+    const blink = Math.sin(this.timeSec * 10) > 0;
+    for (const mine of engine.mines) {
+      const x = Math.round(mine.x);
+      const y = Math.round(mine.y);
+      gf.rect(x - 2, y - 1, 4, 3).fill({ color: 0x3a3f4a });
+      gf.rect(x - 2, y - 1, 4, 1).fill({ color: 0x5a606c });
+      if (mine.armSec <= 0 && blink) {
+        gf.rect(x, y, 1, 1).fill({ color: 0xff4040 });
+      }
+    }
+
     // ── 경험치 결정
     const gg = this.gemGfx;
     gg.clear();
@@ -174,12 +191,22 @@ export class SurvivorRenderer {
       gg.poly([x, y - s, x + s, y, x, y + s, x - s, y]).fill({ color: big ? 0xf2a65a : 0x5fd8f0 });
     }
 
+    // ── 보급 상자
+    for (const ch of engine.chests) {
+      const x = Math.round(ch.x);
+      const y = Math.round(ch.y) - (blink ? 1 : 0);
+      gg.rect(x - 5, y - 4, 10, 8).fill({ color: 0x070a10 });
+      gg.rect(x - 4, y - 3, 8, 6).fill({ color: 0xc08a3a });
+      gg.rect(x - 4, y - 1, 8, 1).fill({ color: 0x7a5420 });
+      gg.rect(x - 1, y - 2, 2, 3).fill({ color: 0xffe08a });
+    }
+
     // ── 유닛 스프라이트
     const bob = Math.sin(this.timeSec * 8) > 0 ? 1 : 0;
-    this.placeSprite(c.id, getSpriteTexture(c.def.sprite, palette), lerp(c.px, c.x), lerp(c.py, c.y), c.facingX, 1, bob, c.sinceHitSec < 0.12 ? 0xff7070 : 0xffffff);
+    this.placeSprite(c.id, getSpriteTexture(c.def.sprite, engine.paletteFor(c.def)), lerp(c.px, c.x), lerp(c.py, c.y), c.facingX, 1, bob, c.sinceHitSec < 0.12 ? 0xff7070 : 0xffffff);
     for (const m of engine.squad) {
       const tint = m.sinceHitSec < 0.1 ? 0xff7070 : 0xffffff;
-      this.placeSprite(m.id, getSpriteTexture(m.def.sprite, palette), lerp(m.px, m.x), lerp(m.py, m.y), m.facingX, 1, m.attackFlashSec > 0 ? 0 : bob, tint);
+      this.placeSprite(m.id, getSpriteTexture(m.def.sprite, engine.paletteFor(m.def)), lerp(m.px, m.x), lerp(m.py, m.y), m.facingX, 1, m.attackFlashSec > 0 ? 0 : bob, tint);
     }
     for (const e of engine.enemies) {
       const tint = e.hitFlashSec > 0 ? 0xff9090 : e.isElite ? 0xffe0a0 : 0xffffff;
@@ -243,6 +270,16 @@ export class SurvivorRenderer {
             const r = f.radius * (1 - t);
             eg.rect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r), 2, 2).fill({ color: col, alpha: t });
           }
+          break;
+        case 'CHAIN': {
+          const mx = (f.x + f.x2) / 2 + (Math.sin(f.lifeSec * 90) * 3);
+          const my = (f.y + f.y2) / 2 + (Math.cos(f.lifeSec * 90) * 3);
+          eg.moveTo(f.x, f.y).lineTo(mx, my).lineTo(f.x2, f.y2).stroke({ width: 1.5, color: col, alpha: t });
+          break;
+        }
+        case 'EVOLVE':
+          eg.circle(f.x, f.y, f.radius * (1.4 - t)).stroke({ width: 2, color: col, alpha: t });
+          eg.rect(Math.round(f.x) - 1, Math.round(f.y) - 14 * (1 - t) - 4, 2, 6).fill({ color: 0xffffff, alpha: t });
           break;
         case 'LEVEL':
           eg.circle(f.x, f.y, f.radius * (1.2 - t)).stroke({ width: 2, color: col, alpha: t });

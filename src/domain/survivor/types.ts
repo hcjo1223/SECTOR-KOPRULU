@@ -3,7 +3,10 @@ export type FactionId = 'IRONCLAD' | 'HIVE' | 'LUMEN';
 /** AUTO: 스스로 가장 가까운 적을 조준 / FACING: 지휘관이 바라보는 방향으로 공격 */
 export type TargetingMode = 'AUTO' | 'FACING';
 
-export type AttackStyle = 'PROJECTILE' | 'PIERCE' | 'MELEE' | 'CONE' | 'PULSE' | 'HEAL';
+export type AttackStyle = 'PROJECTILE' | 'PIERCE' | 'MELEE' | 'CONE' | 'PULSE' | 'HEAL' | 'CHAIN' | 'MINE';
+
+/** NEAREST: 가장 가까운 적 / HIGHEST_HP: 사거리 내 체력이 가장 높은 적 */
+export type TargetPriority = 'NEAREST' | 'HIGHEST_HP';
 
 /** FRONT: 바깥 링(근접·탱커) / BACK: 안쪽 링(원거리·지원) */
 export type FormationRole = 'FRONT' | 'BACK';
@@ -22,6 +25,10 @@ export type SpriteArchetype =
   | 'PRISM'
   | 'LANCER'
   | 'ORB'
+  | 'SNIPER'
+  | 'SHIELDER'
+  | 'SAPPER'
+  | 'TESLA'
   | 'MITE'
   | 'CRAWLER'
   | 'BLOATER'
@@ -38,6 +45,34 @@ export interface AttackProfile {
   splashRadiusPx?: number;
   pierce?: number;
   coneHalfAngleDeg?: number;
+  priority?: TargetPriority;
+  /** 한 번에 발사하는 투사체 수 */
+  multishot?: number;
+  spreadDeg?: number;
+  knockbackPx?: number;
+  chainJumps?: number;
+  chainRadiusPx?: number;
+  /** 적중 지점에 남는 화염 장판 */
+  burnDps?: number;
+  burnSec?: number;
+  /** 엘리트·보스 대상 피해 배수 */
+  bonusVsElite?: number;
+  /** 체력 비율이 이하로 떨어진 일반·엘리트 적 즉사 */
+  executePct?: number;
+}
+
+export type ModuleId = 'RAPID' | 'MAGAZINE' | 'AREA' | 'SCOPE' | 'ARMOR' | 'CORE' | 'MOBILITY' | 'BEACON';
+
+export interface ModuleDef {
+  id: ModuleId;
+  name: string;
+  summary: string;
+  perLevel: string;
+}
+
+export interface EvolutionRecipe {
+  moduleId: ModuleId;
+  intoId: string;
 }
 
 export interface SquadUnitDef {
@@ -45,7 +80,16 @@ export interface SquadUnitDef {
   name: string;
   faction: FactionId;
   role: FormationRole;
+  /** 카드용 한 줄 설명 */
+  summary: string;
   description: string;
+  evolved?: boolean;
+  evolution?: EvolutionRecipe;
+  /** 접촉한 적에게 받은 피해의 일부를 되돌려줌 */
+  reflectPct?: number;
+  /** 주기적으로 결원이 생긴 분대에 1명씩 증원 */
+  reinforceIntervalSec?: number;
+  paletteOverride?: FactionPalette;
   hp: number;
   shield: number;
   moveSpeed: number;
@@ -54,9 +98,17 @@ export interface SquadUnitDef {
   sprite: SpriteArchetype;
 }
 
+export type CommanderPassive = 'NONE' | 'GUNNERY' | 'FORTIFY' | 'VANGUARD';
+
 export interface CommanderDef {
   id: string;
   name: string;
+  title: string;
+  passive: CommanderPassive;
+  passiveName: string;
+  passiveDesc: string;
+  startingSquad: string;
+  paletteOverride?: FactionPalette;
   hp: number;
   shield: number;
   moveSpeed: number;
@@ -78,9 +130,8 @@ export interface FactionDef {
   subtitle: string;
   traitName: string;
   traitDesc: string;
-  commander: CommanderDef;
+  commanders: CommanderDef[];
   unitPool: string[];
-  startingUnits: string[];
   palette: FactionPalette;
 }
 
@@ -123,16 +174,34 @@ export interface WaveTable {
   events: WaveEvent[];
 }
 
-export type CommanderStat = 'HP' | 'SPEED' | 'MAGNET' | 'REGEN';
-
 export type LevelUpOffer =
-  | { kind: 'RECRUIT'; unitId: string }
-  | { kind: 'UPGRADE'; unitId: string; nextLevel: number }
-  | { kind: 'EXPAND'; nextRing: number }
-  | { kind: 'COMMANDER'; stat: CommanderStat }
+  | { kind: 'NEW_SQUAD'; unitId: string }
+  | { kind: 'SQUAD_LEVEL'; unitId: string; nextLevel: number }
+  | { kind: 'NEW_MODULE'; moduleId: ModuleId }
+  | { kind: 'MODULE_LEVEL'; moduleId: ModuleId; nextLevel: number }
+  | { kind: 'REINFORCE'; missing: number }
   | { kind: 'RESUPPLY' };
 
-export type RunPhase = 'RUNNING' | 'LEVEL_UP' | 'DEFEAT' | 'VICTORY';
+export type ChestResult =
+  | { kind: 'EVOLVE'; fromId: string; intoId: string }
+  | { kind: 'UPGRADE'; offer: LevelUpOffer }
+  | { kind: 'RESUPPLY' };
+
+export type RunPhase = 'RUNNING' | 'LEVEL_UP' | 'CHEST' | 'DEFEAT' | 'VICTORY';
+
+/** 분대 = 같은 병종 부대원 묶음. 레벨 = 정원(레벨+1명) */
+export interface SquadState {
+  /** 슬롯 식별자 (진화 전 기본 유닛 id) */
+  key: string;
+  def: SquadUnitDef;
+  level: number;
+  reinforceTimer: number;
+}
+
+export interface ModuleState {
+  id: ModuleId;
+  level: number;
+}
 
 export interface Vec2 {
   x: number;
@@ -167,6 +236,8 @@ export interface CommanderState extends Actor {
 
 export interface SquadMemberState extends Actor {
   def: SquadUnitDef;
+  squadKey: string;
+  baseMaxHp: number;
   slotIndex: number;
   cooldown: number;
   attackFlashSec: number;
@@ -208,6 +279,8 @@ export interface ProjectileState {
   splashRadiusPx: number;
   color: string;
   hitIds: number[];
+  bonusVsElite: number;
+  executePct: number;
   alive: boolean;
 }
 
@@ -220,18 +293,49 @@ export interface GemState {
   alive: boolean;
 }
 
-export type EffectKind = 'SLASH' | 'CONE' | 'PULSE' | 'HEAL' | 'BOOM' | 'DEATH' | 'LEVEL';
+export type EffectKind = 'SLASH' | 'CONE' | 'PULSE' | 'HEAL' | 'BOOM' | 'DEATH' | 'LEVEL' | 'CHAIN' | 'EVOLVE';
 
 export interface EffectState {
   kind: EffectKind;
   x: number;
   y: number;
+  x2: number;
+  y2: number;
   angle: number;
   radius: number;
   halfAngle: number;
   lifeSec: number;
   maxLifeSec: number;
   color: string;
+}
+
+export interface ChestState {
+  id: number;
+  x: number;
+  y: number;
+  alive: boolean;
+}
+
+export interface MineState {
+  id: number;
+  x: number;
+  y: number;
+  armSec: number;
+  damage: number;
+  splashRadiusPx: number;
+  burnDps: number;
+  burnSec: number;
+  alive: boolean;
+}
+
+/** 아군이 만든 지속 피해 장판 (화염 등) */
+export interface ZoneState {
+  x: number;
+  y: number;
+  radius: number;
+  dps: number;
+  lifeSec: number;
+  maxLifeSec: number;
 }
 
 export interface SlimePatch {
@@ -252,13 +356,24 @@ export interface HudSnapshot {
   commanderMaxHp: number;
   commanderShield: number;
   commanderMaxShield: number;
+  commanderName: string;
   squadCount: number;
-  squadCapacity: number;
-  ringCount: number;
   traitActive: boolean;
   bossAlive: boolean;
   bossHp: number;
   bossMaxHp: number;
-  unitLevels: Record<string, number>;
-  squadByUnit: Record<string, number>;
+  squads: SquadHud[];
+  modules: ModuleState[];
+  chestResult: ChestResult | null;
+}
+
+export interface SquadHud {
+  key: string;
+  unitId: string;
+  name: string;
+  level: number;
+  alive: number;
+  headcount: number;
+  evolved: boolean;
+  evolveReady: boolean;
 }

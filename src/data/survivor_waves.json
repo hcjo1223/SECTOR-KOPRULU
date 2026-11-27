@@ -34,16 +34,28 @@
   ],
   "events": [
     {
-      "atSec": 120,
+      "atSec": 90,
       "kind": "ELITE",
       "enemyId": "crawler",
-      "count": 3
+      "count": 1
     },
     {
-      "atSec": 240,
+      "atSec": 150,
+      "kind": "ELITE",
+      "enemyId": "crawler",
+      "count": 2
+    },
+    {
+      "atSec": 210,
       "kind": "ELITE",
       "enemyId": "bloater",
-      "count": 3
+      "count": 2
+    },
+    {
+      "atSec": 270,
+      "kind": "ELITE",
+      "enemyId": "bloater",
+      "count": 2
     },
     {
       "atSec": 300,
@@ -52,16 +64,28 @@
       "count": 48
     },
     {
-      "atSec": 360,
+      "atSec": 330,
+      "kind": "ELITE",
+      "enemyId": "brute",
+      "count": 1
+    },
+    {
+      "atSec": 390,
       "kind": "ELITE",
       "enemyId": "brute",
       "count": 2
     },
     {
-      "atSec": 480,
+      "atSec": 450,
+      "kind": "ELITE",
+      "enemyId": "bloater",
+      "count": 3
+    },
+    {
+      "atSec": 510,
       "kind": "ELITE",
       "enemyId": "brute",
-      "count": 4
+      "count": 3
     },
     {
       "atSec": 520,

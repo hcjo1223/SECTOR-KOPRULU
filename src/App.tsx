@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { SurvivorApp } from './core/SurvivorApp';
 import { useSurvivorStore } from './store/useSurvivorStore';
+import { ChestModal } from './ui/ChestModal';
 import { LevelUpModal } from './ui/LevelUpModal';
 import { ResultModal } from './ui/ResultModal';
 import { SurvivorHUD } from './ui/SurvivorHUD';
@@ -33,6 +34,7 @@ export const App: React.FC = () => {
             <VirtualJoystick className="absolute inset-0" />
             <SurvivorHUD />
             <LevelUpModal />
+            <ChestModal />
             <ResultModal />
           </>
         )}

@@ -13,7 +13,8 @@ interface SurvivorStoreState {
   /** 엔진 교체 시 증가 → 렌더러가 스프라이트 풀을 비운다 */
   runToken: number;
 
-  startRun: (faction: FactionId) => void;
+  startRun: (faction: FactionId, commanderId?: string) => void;
+  confirmChest: () => void;
   restartRun: () => void;
   returnToTitle: () => void;
   togglePause: () => void;
@@ -30,8 +31,8 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
   paused: false,
   runToken: 0,
 
-  startRun: (faction) => {
-    const engine = new SurvivorEngine(faction);
+  startRun: (faction, commanderId) => {
+    const engine = new SurvivorEngine(faction, commanderId);
     set((s) => ({
       screen: 'RUN',
       engine,
@@ -45,7 +46,7 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
   restartRun: () => {
     const current = get().engine;
     if (current) {
-      get().startRun(current.faction.id);
+      get().startRun(current.faction.id, current.commanderDef.id);
     }
   },
 
@@ -69,6 +70,13 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
       return;
     }
     if (engine.chooseOffer(index)) {
+      set({ hud: engine.getHud(), offers: [...engine.offers] });
+    }
+  },
+
+  confirmChest: () => {
+    const engine = get().engine;
+    if (engine && engine.confirmChest()) {
       set({ hud: engine.getHud(), offers: [...engine.offers] });
     }
   },
