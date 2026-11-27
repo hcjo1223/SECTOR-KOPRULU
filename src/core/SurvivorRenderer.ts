@@ -22,6 +22,7 @@ import {
   renderSlashFramePixels,
   renderSpriteFxPixels,
   renderSpritePixels,
+  renderTurretPixels,
   SLASH_FRAME_COUNT,
   SPRITE_FRAME_COUNT,
   SPRITE_FX_PAD,
@@ -76,6 +77,22 @@ export function getSpriteTexture(
   });
   const tex = new Texture({ source });
   textureCache.set(key, tex);
+  return tex;
+}
+
+const turretTextureCache = new Map<string, Texture>();
+
+/** 포탑 공병의 센트리 포탑 텍스처 (8방향 · 사격 섬광) */
+function getTurretTexture(palette: FactionPalette, dir: SpriteDir8, evolved: boolean, firing: boolean): Texture {
+  const key = `${palette.primary}|${palette.accent}|${dir}|${evolved ? 1 : 0}|${firing ? 1 : 0}`;
+  const hit = turretTextureCache.get(key);
+  if (hit) {
+    return hit;
+  }
+  const tex = new Texture({
+    source: new CanvasSource({ resource: pixelsToCanvas(renderTurretPixels(palette, dir, evolved, firing)), scaleMode: 'nearest' }),
+  });
+  turretTextureCache.set(key, tex);
   return tex;
 }
 
@@ -552,7 +569,7 @@ export class SurvivorRenderer {
       }
     }
 
-    // ── 4b. 불길/플라즈마 장판 · 지뢰 · 적 위험 지대 · 엘리트 특성 표시 · 보급 상자
+    // ── 4b. 불길/플라즈마 장판 · 적 위험 지대 · 엘리트 특성 표시 · 보급 상자
     const blink = Math.sin(this.timeSec * 10) > 0;
     for (const z of engine.zones) {
       const a = Math.min(1, z.lifeSec / 0.6);
@@ -572,16 +589,6 @@ export class SurvivorRenderer {
         const ey = Math.round(zy + Math.sin(ang) * rr);
         gf.rect(ex - 1, ey - 1, 3, 3).fill({ color: OUTLINE_HEX, alpha: 0.55 * a });
         gf.rect(ex, ey, 2, 2).fill({ color: k % 2 === 0 ? innerCol : outerCol, alpha: 0.9 * a });
-      }
-    }
-    for (const mine of engine.mines) {
-      const x = Math.round(mine.x);
-      const y = Math.round(mine.y);
-      gf.rect(x - 3, y - 2, 7, 5).fill({ color: OUTLINE_HEX });
-      gf.rect(x - 2, y - 1, 5, 3).fill({ color: mine.evolved ? 0x7c5a20 : 0x4a505c });
-      gf.rect(x - 1, y - 1, 3, 1).fill({ color: mine.evolved ? 0xffcf4a : 0x788296 });
-      if (mine.armSec <= 0 && blink) {
-        gf.rect(x, y, 1, 1).fill({ color: mine.evolved ? 0x6eeeff : 0xff4040 });
       }
     }
     for (const h of engine.hazards) {
@@ -676,6 +683,13 @@ export class SurvivorRenderer {
         tint
       );
       this.placeFx(m.id, getSpriteFxTexture(m.def.sprite, engine.paletteFor(m.def), mFrame, mDir, mAnim), mx, my, 1);
+    }
+
+    // 포탑 공병 센트리 포탑 (몸 스프라이트와 같은 피벗, 8방향 회전 + 사격 섬광)
+    for (const t of engine.turrets) {
+      const sq = engine.getSquad(t.squadKey);
+      const tPal = sq ? engine.paletteFor(sq.def) : engine.faction.palette;
+      this.placeSprite(t.id, getTurretTexture(tPal, angleToDir8(t.facingAngle), t.evolved, t.flashSec > 0), t.x, t.y, 1, 0xffffff);
     }
 
     for (const e of engine.enemies) {
@@ -881,7 +895,24 @@ export class SurvivorRenderer {
         );
       }
     }
+    // 포탑 남은 수명 게이지
+    for (const t of engine.turrets) {
+      bar(t.x, t.y - 18, 10, t.lifeSec / t.maxLifeSec, t.evolved ? 0xffcf4a : 0x6eeeff);
+    }
     for (const e of engine.enemies) {
+      if (e.markedSec > 0) {
+        // 현장 사령관 [표적 표식]: 적 둘레 붉은 조준 모서리
+        const r = Math.round(7 * e.scale) + 2;
+        const ex = Math.round(lerp(e.px, e.x));
+        const ey = Math.round(lerp(e.py, e.y)) - Math.round(6 * e.scale);
+        const a = e.markedSec < 0.6 && Math.floor(this.timeSec * 12) % 2 === 0 ? 0.4 : 0.95;
+        for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+          const cx = ex + sx * r;
+          const cy = ey + sy * r;
+          bg.rect(cx - (sx > 0 ? 2 : 0), cy, 3, 1).fill({ color: 0xff3858, alpha: a });
+          bg.rect(cx, cy - (sy > 0 ? 2 : 0), 1, 3).fill({ color: 0xff3858, alpha: a });
+        }
+      }
       if (e.isBoss) {
         bar(lerp(e.px, e.x), lerp(e.py, e.y) - 22 * e.scale - 6, 34, e.hp / e.maxHp, 0xff3858);
       } else if (e.isElite) {
@@ -942,7 +973,7 @@ export class SurvivorRenderer {
       }
 
       case 'BOOM': {
-        // 박격포·다연장·지뢰·자폭충 고폭 스플래시: 5프레임 28x28 볼륨 픽셀 폭발 시트 + 충격파 링
+        // 박격포·다연장·포탑 유탄·자폭충 고폭 스플래시: 5프레임 28x28 볼륨 픽셀 폭발 시트 + 충격파 링
         const isAcid = f.color === '#a8e838' || f.color === '#98e030' || f.color === '#9be04a';
         const variant: ExplosionVariant = f.evolved ? 'PLASMA' : isAcid ? 'ACID' : 'STANDARD';
         const frameIdx = Math.min(

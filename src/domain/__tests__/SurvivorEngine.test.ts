@@ -2,9 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { assignSlots, buildSlotOffsets, capacityForRings, pickActiveSlots } from '../survivor/Formation';
 import { SpatialHash } from '../survivor/SpatialHash';
 import { getAllEnemies, getAllModules, getAllSquadUnits, getFactions, getSquadUnitDef, getWaveTable } from '../survivor/SurvivorCatalog';
-import { ATTACK_RELEASE_SEC, attackWindupSec, MAX_SQUADS, squadHeadcount, SURVIVOR_DT, SurvivorEngine } from '../survivor/SurvivorEngine';
+import {
+  ATTACK_RELEASE_SEC,
+  attackWindupSec,
+  MARK_DAMAGE_MUL,
+  MAX_SQUADS,
+  squadHeadcount,
+  SURVIVOR_DT,
+  SurvivorEngine,
+  VANGUARD_FRONT_DAMAGE_TAKEN_MUL,
+} from '../survivor/SurvivorEngine';
 
 /** 시작 분대가 없어졌으므로, 분대 보유를 전제로 한 테스트는 추천 분대를 직접 지급한다 */
+/** 레벨업·상자 창이 뜨면 첫 선택지로 넘기며 한 틱 진행 */
+function stepAuto(e: SurvivorEngine): void {
+  if (e.phase === 'LEVEL_UP') e.chooseOffer(0);
+  if (e.phase === 'CHEST') e.confirmChest();
+  e.step(1);
+}
+
 function withStarter(e: SurvivorEngine, unitId: string): SurvivorEngine {
   e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId });
   return e;
@@ -172,13 +188,13 @@ describe('SurvivorEngine', () => {
     expect(e.chests.length + (e.phase === 'CHEST' ? 1 : 0)).toBeGreaterThan(0);
   });
 
-  it('mines and chain lightning damage enemies', () => {
+  it('turret engineers deploy sentry turrets that shoot, and chain lightning damages enemies', () => {
     const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_engineer', 8), 'ic_sapper');
     e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId: 'ic_tesla' });
-    e.step(90);
-    expect(e.mines.length).toBeGreaterThan(0);
-    for (let i = 0; i < 5; i += 1) e.spawnEnemyAt('crawler', 30 + i * 10, 20);
-    e.step(90);
+    e.step(60);
+    for (let i = 0; i < 5; i += 1) e.spawnEnemyAt('crawler', 40 + i * 10, 20);
+    e.step(150);
+    expect(e.turrets.length).toBeGreaterThan(0);
     expect(e.kills).toBeGreaterThan(0);
   });
 
@@ -386,6 +402,140 @@ describe('SurvivorEngine', () => {
     const visuals = new Set(e.enemyShots.map((s) => s.visual));
     expect(visuals.has('SPIKE')).toBe(true);
     expect(visuals.has('PRISM')).toBe(true);
+  });
+
+  describe('commander passive overhaul', () => {
+    it('Field Marshal: commander shots mark targets (+25% damage taken) and bullets pierce one extra enemy', () => {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 51), 'ic_rifle');
+      e.step(60);
+      for (const m of e.squad) m.cooldown = 1e9;
+      const c = e.commander;
+      const target = e.spawnEnemyAt('brute', c.x + 50, c.y);
+      c.cooldown = 0;
+      for (let i = 0; i < 40 && target.markedSec <= 0; i += 1) e.step(1);
+      expect(target.markedSec).toBeGreaterThan(0);
+      // 표식 대상은 같은 피해에 25% 더 아프다
+      const hp0 = target.hp;
+      (e as unknown as { damageEnemy(t: unknown, d: number, b: number, x: number): void }).damageEnemy(target, 10, 1, 0);
+      expect(hp0 - target.hp).toBeCloseTo(10 * MARK_DAMAGE_MUL, 5);
+      // 소총탄 관통 +1
+      const m = e.squad[0];
+      m.cooldown = 0;
+      let maxPierce = -1;
+      for (let i = 0; i < 40; i += 1) {
+        stepAuto(e);
+        for (const p of e.projectiles) if (p.visual === 'RIFLE' && !p.marks) maxPierce = Math.max(maxPierce, p.pierceLeft);
+      }
+      expect(maxPierce).toBe(1);
+    });
+
+    it('Engineer: entrenches in 0.15s, overdrives turrets and charges ally shields only while entrenched', () => {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_engineer', 52), 'ic_sapper');
+      expect(e.entrenchDelaySec).toBeCloseTo(0.15, 5);
+      const c = e.commander;
+      expect(c.maxShield).toBeCloseTo(c.maxHp * 0.3, 5);
+      e.setMoveInput(1, 0);
+      e.step(30);
+      expect(c.shield).toBe(0);
+      e.setMoveInput(0, 0);
+      e.step(60);
+      expect(e.isEntrenched).toBe(true);
+      expect(c.shield).toBeGreaterThan(0);
+    });
+
+    it('Vanguard: keeps the entrench damage bonus while moving and front squads take 25% less damage', () => {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_vanguard', 53), 'ic_shield');
+      e.step(60);
+      const front = e.squad[0];
+      expect(front.def.role).toBe('FRONT');
+      const hp0 = front.hp;
+      (e as unknown as { damageAlly(a: unknown, d: number): void }).damageAlly(front, 20);
+      expect(hp0 - front.hp).toBeCloseTo(20 * VANGUARD_FRONT_DAMAGE_TAKEN_MUL, 5);
+      const marshal = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 53), 'ic_shield');
+      marshal.step(60);
+      const f2 = marshal.squad[0];
+      const h2 = f2.hp;
+      (marshal as unknown as { damageAlly(a: unknown, d: number): void }).damageAlly(f2, 20);
+      expect(h2 - f2.hp).toBeCloseTo(20, 5);
+    });
+  });
+
+  it('range hierarchy: shield < flamer < rifle/tesla/turret < mortar < sniper, and mortars ignore enemies inside 45px', () => {
+    const r = (id: string): number => getSquadUnitDef(id).attack.rangePx;
+    expect(r('ic_shield')).toBeLessThan(r('ic_flamer'));
+    expect(r('ic_flamer')).toBeLessThan(r('ic_rifle'));
+    expect(r('ic_rifle')).toBeLessThan(r('ic_mortar'));
+    expect(r('ic_mortar')).toBeLessThan(r('ic_sniper'));
+    expect(r('ic_sniper') / r('ic_rifle')).toBeGreaterThan(3);
+    expect(getSquadUnitDef('ic_mortar').attack.minRangePx).toBe(45);
+
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 54), 'ic_mortar');
+    e.step(60);
+    e.commander.cooldown = 1e9;
+    const mortar = e.squad[0];
+    mortar.cooldown = 0;
+    e.spawnEnemyAt('brute', mortar.x + 20, mortar.y);
+    e.step(20);
+    expect(e.projectiles.some((p) => p.visual === 'MORTAR')).toBe(false);
+  });
+
+  it('turrets: cap is 2 + squad level, last 12s, and the evolved heavy turret lobs grenades and leaves fire when it expires', () => {
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_engineer', 55), 'ic_sapper');
+    for (let lv = 2; lv <= 5; lv += 1) e.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_sapper', nextLevel: lv });
+    e.commander.cooldown = 1e9;
+    let maxOwned = 0;
+    for (let i = 0; i < 30 * 20; i += 1) {
+      if (i % 30 === 0) e.spawnEnemyAt('brute', e.commander.x + 70, e.commander.y + ((i / 30) % 5) * 8 - 16);
+      e.commander.hp = e.commander.maxHp;
+      stepAuto(e);
+      maxOwned = Math.max(maxOwned, e.turrets.length);
+    }
+    expect(maxOwned).toBeGreaterThan(2);
+    expect(maxOwned).toBeLessThanOrEqual(7);
+    expect(e.turrets.every((t) => t.lifeSec <= 12)).toBe(true);
+
+    const h = withStarter(new SurvivorEngine('IRONCLAD', 'ic_engineer', 56), 'ic_sapper');
+    for (let lv = 2; lv <= 5; lv += 1) h.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_sapper', nextLevel: lv });
+    h.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: 'MOBILITY' });
+    h.grantChest();
+    h.confirmChest();
+    expect(h.squad[0].def.id).toBe('ic_minelayer');
+    h.commander.cooldown = 1e9;
+    let sawGrenade = false;
+    for (let i = 0; i < 30 * 16; i += 1) {
+      if (i % 20 === 0) h.spawnEnemyAt('brute', h.commander.x + 60, h.commander.y);
+      h.commander.hp = h.commander.maxHp;
+      stepAuto(h);
+      if (h.projectiles.some((p) => p.visual === 'MORTAR')) sawGrenade = true;
+    }
+    expect(sawGrenade).toBe(true);
+    expect(h.zones.some((z) => z.kind === 'PLASMA')).toBe(true);
+  });
+
+  it('flamers channel a continuous stream, then cool down; cooldown shrinks with squad level', () => {
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 57), 'ic_flamer');
+    e.step(60);
+    e.commander.cooldown = 1e9;
+    const f = e.squad[0];
+    f.cooldown = 0;
+    const brute = e.spawnEnemyAt('brute', f.x + 30, f.y);
+    brute.speed = 0;
+    let channelTicks = 0;
+    let sawCooldown = false;
+    for (let i = 0; i < 30 * 4; i += 1) {
+      brute.hp = brute.maxHp;
+      e.step(1);
+      channelTicks = Math.max(channelTicks, f.channelTicks);
+      if (channelTicks > 0 && f.channelSec === 0 && f.cooldown > 1) sawCooldown = true;
+    }
+    // 2초 / 0.13초 ≈ 15회 판정
+    expect(channelTicks).toBeGreaterThanOrEqual(13);
+    expect(sawCooldown).toBe(true);
+    const cd = (eng: SurvivorEngine, lv: number): number =>
+      (eng as unknown as { channelCooldown(a: unknown, l: number, r: number): number }).channelCooldown(getSquadUnitDef('ic_flamer').attack, lv, 1);
+    expect(cd(e, 1)).toBeCloseTo(2.4, 5);
+    expect(cd(e, 5)).toBeLessThan(cd(e, 1));
+    expect((e as unknown as { channelCooldown(a: unknown, l: number, r: number): number }).channelCooldown(getSquadUnitDef('ic_flamer').attack, 5, 0.3)).toBeCloseTo(0.7, 5);
   });
 });
 

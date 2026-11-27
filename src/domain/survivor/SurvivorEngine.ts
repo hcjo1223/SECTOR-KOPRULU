@@ -21,7 +21,8 @@ import type {
   HazardState,
   HudSnapshot,
   LevelUpOffer,
-  MineState,
+  TurretProfile,
+  TurretState,
   ModuleId,
   ModuleState,
   ProjectileState,
@@ -45,10 +46,28 @@ export const MAX_MODULE_LEVEL = 5;
 
 const MELEE_LEASH_PX = 46;
 
+/** 진영 특성 [포진]: 정지 시 부대 공격력·사거리 */
+const ENTRENCH_DAMAGE_MUL = 1.35;
+const ENTRENCH_RANGE_MUL = 1.25;
+
 /** 지휘관 패시브 수치 (밸런스 조정 지점) */
-const GUNNERY_ATTACK_SPEED_MUL = 1.08; // 현장 사령관 [화력 통제]
-const VANGUARD_FACING_DAMAGE_MUL = 1.4; // 돌격 지휘관 [돌파 명령]: 이동 중 방향형 분대 피해
-const VANGUARD_MOVE_SPEED_MUL = 1.12; // 돌격 지휘관 이동속도
+// 현장 사령관 [화력 통제]: 사격·관통형 분대 관통 +1, 지휘관 사격 명중 시 [표적 표식]
+const GUNNERY_PIERCE_BONUS = 1;
+export const MARK_DURATION_SEC = 3;
+export const MARK_DAMAGE_MUL = 1.25;
+// 공병 대장 [전술 거점화]: 빠른 포진, 포진 중 포탑·테슬라 과충전 + 아군 보호막 충전
+const FORTIFY_ENTRENCH_DELAY_SEC = 0.15;
+export const FORTIFY_OVERDRIVE_MUL = 1.5;
+const FORTIFY_SHIELD_PCT = 0.3;
+const FORTIFY_SHIELD_FILL_PER_SEC = 0.25;
+// 돌격 지휘관 [선봉 돌파]: 이동 중에도 포진 공격력 유지, 이동속도, 전열 피해 감소
+const VANGUARD_MOVE_SPEED_MUL = 1.15;
+export const VANGUARD_FRONT_DAMAGE_TAKEN_MUL = 0.75;
+
+/** 포탑: 동시 유지 전체 상한 */
+const MAX_TURRETS = 40;
+/** 연속 분사형(화염)은 분대 레벨당 냉각 -10% */
+const CHANNEL_COOLDOWN_PER_LEVEL = 0.1;
 
 /** 공격 모션: 예비동작(ATTACK 0) → 발사·반동·복귀(ATTACK 1~3)에 쓰는 시간 */
 export const ATTACK_RELEASE_SEC = 0.21;
@@ -66,11 +85,9 @@ const BOSS_WINDUP_SEC = 0.18;
 const ENEMY_BITE_REACH_PX = 4;
 const MAX_GEMS = 320;
 const MAX_EFFECTS = 260;
-const MAX_MINES = 80;
 const MAX_ZONES = 48;
 const SHIELD_REGEN_DELAY_SEC = 2.5;
 const GEM_MAGNET_SPEED = 240;
-const MINE_TRIGGER_PX = 9;
 const MAX_ENEMY_SHOTS = 260;
 const MAX_HAZARDS = 40;
 const ALL_AFFIXES: readonly EliteAffix[] = ['SWIFT', 'SPLIT', 'AURA', 'SHIELDED', 'VOLATILE'];
@@ -129,7 +146,7 @@ export class SurvivorEngine {
   public readonly projectiles: ProjectileState[] = [];
   public readonly gems: GemState[] = [];
   public readonly chests: ChestState[] = [];
-  public readonly mines: MineState[] = [];
+  public readonly turrets: TurretState[] = [];
   public readonly zones: ZoneState[] = [];
   public readonly effects: EffectState[] = [];
   public readonly enemyShots: EnemyShotState[] = [];
@@ -197,9 +214,9 @@ export class SurvivorEngine {
     }
   }
 
-  /** 뷰포트 반대각선 길이에 맞춰 스폰 반경을 조정한다 (180~420px). */
+  /** 뷰포트 반대각선 길이에 맞춰 스폰 반경을 조정한다 (180~620px, 카메라 줌아웃 시 확장). */
   public setSpawnRadius(r: number): void {
-    this.spawnRadius = Math.max(180, Math.min(420, r));
+    this.spawnRadius = Math.max(180, Math.min(620, r));
   }
 
   public get xpToNext(): number {
@@ -207,7 +224,7 @@ export class SurvivorEngine {
   }
 
   public get entrenchDelaySec(): number {
-    return this.commanderDef.passive === 'FORTIFY' ? 0.2 : 0.5;
+    return this.commanderDef.passive === 'FORTIFY' ? FORTIFY_ENTRENCH_DELAY_SEC : 0.5;
   }
 
   public get isEntrenched(): boolean {
@@ -373,7 +390,7 @@ export class SurvivorEngine {
     this.updateEnemies(dt);
     this.rebuildHash();
     this.updateProjectiles(dt);
-    this.updateMines(dt);
+    this.updateTurrets(dt);
     this.updateZones(dt);
     this.updateEnemyShots(dt);
     this.updateHazards(dt);
@@ -469,7 +486,7 @@ export class SurvivorEngine {
       }
       c.attackFlashSec = ATTACK_RELEASE_SEC;
       const dmg = a.damage * (1 + 0.1 * this.moduleLevel('CORE')) * this.overchargeMul;
-      this.spawnProjectile(c.x, c.y, aim.x - c.x, aim.y - c.y, a, dmg, a.rangePx * 1.15, this.paletteFor(c.def).accent);
+      this.spawnProjectile(c.x, c.y, aim.x - c.x, aim.y - c.y, a, dmg, a.rangePx * 1.15, this.paletteFor(c.def).accent, 'RIFLE', false, 0, this.commanderDef.passive === 'GUNNERY');
       c.cooldown = Math.max(0.02, a.cooldownSec - windup);
       return;
     }
@@ -519,6 +536,9 @@ export class SurvivorEngine {
       cooldown: this.rng() * def.attack.cooldownSec,
       attackFlashSec: 0,
       windupSec: 0,
+      channelSec: 0,
+      channelTickSec: 0,
+      channelTicks: 0,
     };
     this.squad.push(m);
     return m;
@@ -584,6 +604,11 @@ export class SurvivorEngine {
     const nextC = this.commanderDef.hp * hpMult;
     c.hp += nextC - c.maxHp;
     c.maxHp = nextC;
+    if (this.commanderDef.passive === 'FORTIFY') {
+      for (const a of [c, ...this.squad]) {
+        a.maxShield = Math.max(a.maxShield, a.maxHp * FORTIFY_SHIELD_PCT);
+      }
+    }
   }
 
   private reassignSlots(): void {
@@ -648,9 +673,10 @@ export class SurvivorEngine {
     const c = this.commander;
     const entrenched = this.isEntrenched;
     const passive = this.commanderDef.passive;
-    const moving = c.idleSec === 0;
     const rapid = 1 - 0.07 * this.moduleLevel('RAPID');
-    const rangeMul = (1 + 0.08 * this.moduleLevel('SCOPE')) * (entrenched ? 1.25 : 1);
+    const rangeMul = (1 + 0.08 * this.moduleLevel('SCOPE')) * (entrenched ? ENTRENCH_RANGE_MUL : 1);
+    // 돌격 지휘관은 이동 중에도 포진 공격력 보너스를 유지한다 (사거리 보너스는 정지 시만)
+    const entrenchDmg = entrenched || passive === 'VANGUARD' ? ENTRENCH_DAMAGE_MUL : 1;
     const coreMul = (1 + 0.1 * this.moduleLevel('CORE')) * this.overchargeMul;
     const critChance = 0.05 * this.moduleLevel('SCOPE');
     const speedMul = this.speedMul;
@@ -714,13 +740,36 @@ export class SurvivorEngine {
         }
       }
 
-      // 공격: 쿨다운 완료 + 표적 확인 → 예비동작 → 발동
+      // 공격: 쿨다운 완료 + 표적 확인 → 예비동작 → 발동 (연속 분사형은 분사 → 냉각)
       m.attackFlashSec = Math.max(0, m.attackFlashSec - dt);
-      const gunnery = passive === 'GUNNERY' && (a.style === 'PROJECTILE' || a.style === 'PIERCE') ? GUNNERY_ATTACK_SPEED_MUL : 1;
-      const tempo = gunnery;
+      const overdrive = passive === 'FORTIFY' && entrenched && a.style === 'CHAIN' ? FORTIFY_OVERDRIVE_MUL : 1;
+      const tempo = overdrive;
+      const computeDmg = (): number => {
+        let dmg = a.damage * squadLevelDamageMult(sqLevel) * coreMul * entrenchDmg;
+        if (a.style !== 'HEAL' && critChance > 0 && this.rng() < critChance) {
+          dmg *= 2;
+        }
+        return dmg;
+      };
+      if (m.channelSec > 0) {
+        m.channelSec -= dt;
+        m.channelTickSec -= dt;
+        if (m.channelTickSec <= 0) {
+          m.channelTickSec += a.channelTickSec ?? 0.13;
+          m.channelTicks += 1;
+          // 분사 중에는 표적이 잠시 없어도 화염 줄기를 유지하고, 장판은 4판정마다 남긴다
+          this.performSquadAttack(m, a, computeDmg(), range, m.channelTicks % 4 === 1);
+          m.attackFlashSec = ATTACK_RELEASE_SEC;
+        }
+        if (m.channelSec <= 0) {
+          m.channelSec = 0;
+          m.cooldown = this.channelCooldown(a, sqLevel, rapid);
+        }
+        continue;
+      }
       m.cooldown -= dt * tempo;
       const cdFull = a.cooldownSec * rapid;
-      const windup = attackWindupSec(cdFull);
+      const windup = attackWindupSec(a.channelSec ? 0.5 : cdFull);
       if (m.windupSec <= 0) {
         if (m.cooldown > 0) {
           continue;
@@ -741,17 +790,16 @@ export class SurvivorEngine {
         continue;
       }
       m.windupSec = 0;
-      let dmg = a.damage * squadLevelDamageMult(sqLevel) * coreMul * (entrenched ? 1.35 : 1);
-      if (passive === 'VANGUARD' && moving && a.targeting === 'FACING') {
-        dmg *= VANGUARD_FACING_DAMAGE_MUL;
+      if (a.channelSec) {
+        // 연속 분사 시작: 첫 판정은 즉시
+        m.channelSec = a.channelSec;
+        m.channelTickSec = a.channelTickSec ?? 0.13;
+        m.channelTicks = 1;
+        this.performSquadAttack(m, a, computeDmg(), range, true);
+        m.attackFlashSec = ATTACK_RELEASE_SEC;
+        continue;
       }
-      if (passive === 'FORTIFY' && entrenched && (a.style === 'MINE' || a.style === 'CHAIN')) {
-        dmg *= 1.4;
-      }
-      if (a.style !== 'HEAL' && critChance > 0 && this.rng() < critChance) {
-        dmg *= 2;
-      }
-      if (this.performSquadAttack(m, a, dmg, range)) {
+      if (this.performSquadAttack(m, a, computeDmg(), range)) {
         m.cooldown = Math.max(0.02, cdFull - windup);
         m.attackFlashSec = ATTACK_RELEASE_SEC;
       } else {
@@ -759,6 +807,12 @@ export class SurvivorEngine {
         m.cooldown = 0.1;
       }
     }
+  }
+
+  /** 연속 분사형 냉각: 분대 레벨당 -10%, 고속 장전 반영, 하한 minCooldownSec */
+  private channelCooldown(a: AttackProfile, level: number, rapid: number): number {
+    const lv = 1 - CHANNEL_COOLDOWN_PER_LEVEL * (level - 1);
+    return Math.max(a.minCooldownSec ?? 0.7, a.cooldownSec * rapid * lv);
   }
 
   /** 예비동작을 시작할 만한 표적이 있는지 (공격 방식별 발동 조건과 동일). 있으면 조준 각도 */
@@ -781,15 +835,19 @@ export class SurvivorEngine {
       }
       case 'CHAIN':
         return toward(this.findTarget(m.x, m.y, range, a.priority ?? 'NEAREST'));
-      case 'MINE':
-        return this.mines.length < MAX_MINES ? { angle: null } : null;
+      case 'TURRET':
+        // 포탑은 사거리 안에 적이 있고, 분대 상한에 여유가 있거나 멀리 떨어진 포탑을 옮길 수 있을 때만 설치한다
+        if (!a.turret || this.turretSlotFor(m, a.turret) === null) {
+          return null;
+        }
+        return toward(this.findNearestEnemy(m.x, m.y, a.turret.rangePx + 30));
       default:
         return { angle: null };
     }
   }
 
   /** @returns 실제로 공격이 발동했는지 */
-  private performSquadAttack(m: SquadMemberState, a: AttackProfile, dmg: number, range: number): boolean {
+  private performSquadAttack(m: SquadMemberState, a: AttackProfile, dmg: number, range: number, leaveBurn = true): boolean {
     const color = this.paletteFor(m.def).accent;
     const evolved = !!m.def.evolved;
     const areaMul = 1 + 0.1 * this.moduleLevel('AREA');
@@ -839,7 +897,7 @@ export class SurvivorEngine {
       case 'CONE': {
         const r = range * areaMul;
         const { aimX, aimY, hasTarget } = this.resolveAim(m, a, r);
-        if (!hasTarget) {
+        if (!hasTarget && !a.channelSec) {
           return false;
         }
         const half = ((a.coneHalfAngleDeg ?? 30) * Math.PI) / 180;
@@ -847,7 +905,7 @@ export class SurvivorEngine {
         if (hits === 0 && a.targeting === 'AUTO') {
           return false;
         }
-        if (a.burnDps && hits > 0) {
+        if (a.burnDps && hits > 0 && leaveBurn) {
           this.addZone(
             m.x + aimX * r * 0.65,
             m.y + aimY * r * 0.65,
@@ -898,7 +956,8 @@ export class SurvivorEngine {
           const ang = base + (k - (shots - 1) / 2) * spread;
           const dx = Math.cos(ang);
           const dy = Math.sin(ang);
-          this.spawnProjectile(m.x, m.y, dx, dy, splashA, dmg, range, projCol, visual, evolved);
+          const pierceBonus = this.commanderDef.passive === 'GUNNERY' && !splashA.splashRadiusPx ? GUNNERY_PIERCE_BONUS : 0;
+          this.spawnProjectile(m.x, m.y, dx, dy, splashA, dmg, range, projCol, visual, evolved, pierceBonus);
           if (visual === 'SNIPER' || visual === 'EXECUTIONER') {
             const trailLen = Math.min(range * 0.65, visual === 'EXECUTIONER' ? 96 : 68);
             this.addEffect(
@@ -941,25 +1000,61 @@ export class SurvivorEngine {
         }
         return true;
       }
-      case 'MINE': {
-        if (this.mines.length >= MAX_MINES) {
+      case 'TURRET': {
+        const tp = a.turret;
+        if (!tp) {
           return false;
         }
-        this.mines.push({
+        const slot = this.turretSlotFor(m, tp);
+        if (slot === null) {
+          return false;
+        }
+        if (slot !== 'FREE') {
+          // 상한에 걸리면 부대에서 멀어진 가장 오래된 포탑을 회수해 화력 거점을 옮긴다
+          slot.alive = false;
+        }
+        if (this.turrets.length >= MAX_TURRETS) {
+          this.turrets.shift();
+        }
+        this.turrets.push({
           id: this.nextId++,
+          squadKey: m.squadKey,
           x: m.x,
-          y: m.y,
-          armSec: 0.4,
+          y: m.y + 2,
+          lifeSec: tp.lifeSec,
+          maxLifeSec: tp.lifeSec,
+          fireCd: 0.25,
+          shots: 0,
           damage: dmg,
-          splashRadiusPx: (a.splashRadiusPx ?? 24) * areaMul,
-          burnDps: a.burnDps ? a.burnDps * (dmg / a.damage) : 0,
-          burnSec: a.burnSec ?? 0,
+          profile: tp,
+          facingAngle: m.facingAngle,
+          flashSec: 0,
           evolved,
           alive: true,
         });
+        this.addEffect('PULSE', m.x, m.y + 2, 0, 9, 0, 0.25, evolved ? '#ffcf4a' : '#9fe8ff', m.x, m.y, evolved);
         return true;
       }
     }
+  }
+
+  /**
+   * 포탑 설치 자리: 분대 상한(maxBase + 분대 레벨) 미만이면 'FREE',
+   * 상한이면 설치 위치에서 사거리 밖으로 멀어진 가장 오래된 포탑(회수 대상), 둘 다 아니면 null.
+   */
+  private turretSlotFor(m: SquadMemberState, tp: TurretProfile): 'FREE' | TurretState | null {
+    const sq = this.getSquad(m.squadKey);
+    const cap = tp.maxBase + (sq ? sq.level : 1);
+    let owned = 0;
+    let far: TurretState | null = null;
+    for (const t of this.turrets) {
+      if (!t.alive || t.squadKey !== m.squadKey) continue;
+      owned += 1;
+      if (!far && Math.hypot(t.x - m.x, t.y - m.y) > tp.rangePx) {
+        far = t;
+      }
+    }
+    return owned < cap ? 'FREE' : far;
   }
 
   /**
@@ -968,8 +1063,9 @@ export class SurvivorEngine {
    * FACING: 지휘관이 바라보는 방향의 원뿔 안 가장 가까운 적 → 없으면 사거리 안에 적이 있을 때 정면 방향 그대로.
    */
   private resolveAim(m: Actor, a: AttackProfile, range: number): { aimX: number; aimY: number; hasTarget: boolean } {
+    const minR = a.minRangePx ?? 0;
     if (a.targeting === 'AUTO') {
-      const t = this.findTarget(m.x, m.y, range, a.priority ?? 'NEAREST');
+      const t = this.findTarget(m.x, m.y, range, a.priority ?? 'NEAREST', minR);
       if (!t) {
         return { aimX: 0, aimY: 0, hasTarget: false };
       }
@@ -993,7 +1089,7 @@ export class SurvivorEngine {
       const dy = e.y - m.y;
       const d2 = dx * dx + dy * dy;
       const reach = range + e.radius;
-      if (d2 > reach * reach) {
+      if (d2 > reach * reach || d2 < minR * minR) {
         continue;
       }
       anyInRange = true;
@@ -1170,6 +1266,7 @@ export class SurvivorEngine {
       windupSec: 0,
       windupTarget: null,
       windupReflectPct: 0,
+      markedSec: 0,
       facingAngle: Math.PI / 2,
       isElite: elite,
       isBoss: boss,
@@ -1355,6 +1452,9 @@ export class SurvivorEngine {
       e.contactCd -= dt;
       e.hitFlashSec = Math.max(0, e.hitFlashSec - dt);
       e.attackFlashSec = Math.max(0, e.attackFlashSec - dt);
+      if (e.markedSec > 0) {
+        e.markedSec -= dt;
+      }
       if (e.windupSec > 0) {
         this.resolveEnemyWindup(e, dt);
         if (!e.alive) {
@@ -1552,7 +1652,7 @@ export class SurvivorEngine {
     this.enemies.length = w;
   }
 
-  // ─────────────────────────── 투사체·지뢰·장판 ───────────────────────────
+  // ─────────────────────────── 투사체·포탑·장판 ───────────────────────────
 
   private spawnProjectile(
     x: number,
@@ -1564,7 +1664,9 @@ export class SurvivorEngine {
     range: number,
     color: string,
     visual: ProjectileVisual = 'RIFLE',
-    evolved = false
+    evolved = false,
+    pierceBonus = 0,
+    marks = false
   ): void {
     const d = Math.hypot(dirX, dirY) || 1;
     const speed = a.projectileSpeed ?? 250;
@@ -1579,7 +1681,7 @@ export class SurvivorEngine {
       damage,
       radius: a.style === 'PIERCE' ? 3 : 2,
       lifeSec: (range * 1.15) / speed,
-      pierceLeft: a.style === 'PIERCE' ? a.pierce ?? 1 : 0,
+      pierceLeft: (a.style === 'PIERCE' ? a.pierce ?? 1 : 0) + pierceBonus,
       splashRadiusPx: a.splashRadiusPx ?? 0,
       color,
       visual,
@@ -1587,6 +1689,7 @@ export class SurvivorEngine {
       hitIds: [],
       bonusVsElite: a.bonusVsElite ?? 1,
       executePct: a.executePct ?? 0,
+      marks,
       alive: true,
     });
   }
@@ -1615,6 +1718,9 @@ export class SurvivorEngine {
           this.explode(p.x, p.y, p.splashRadiusPx, p.damage, 0, 0, p.evolved);
           p.alive = false;
           break;
+        }
+        if (p.marks) {
+          e.markedSec = MARK_DURATION_SEC;
         }
         this.damageEnemy(e, p.damage, p.bonusVsElite, p.executePct, p.px, p.py);
         const isHeavy = p.visual === 'SNIPER' || p.visual === 'EXECUTIONER';
@@ -1661,20 +1767,64 @@ export class SurvivorEngine {
     }
   }
 
-  private updateMines(dt: number): void {
+  private updateTurrets(dt: number): void {
+    const overdrive = this.commanderDef.passive === 'FORTIFY' && this.isEntrenched ? FORTIFY_OVERDRIVE_MUL : 1;
+    const areaMul = 1 + 0.1 * this.moduleLevel('AREA');
     let w = 0;
-    for (let i = 0; i < this.mines.length; i += 1) {
-      const mine = this.mines[i];
-      mine.armSec -= dt;
-      if (mine.armSec <= 0 && this.findNearestEnemy(mine.x, mine.y, MINE_TRIGGER_PX)) {
-        this.explode(mine.x, mine.y, mine.splashRadiusPx, mine.damage, mine.burnDps, mine.burnSec, mine.evolved);
-        mine.alive = false;
+    for (let i = 0; i < this.turrets.length; i += 1) {
+      const t = this.turrets[i];
+      if (!t.alive) {
+        continue;
       }
-      if (mine.alive) {
-        this.mines[w++] = mine;
+      const tp = t.profile;
+      t.lifeSec -= dt;
+      t.flashSec = Math.max(0, t.flashSec - dt);
+      t.fireCd -= dt * overdrive;
+      if (t.fireCd <= 0) {
+        const target = this.findNearestEnemy(t.x, t.y, tp.rangePx);
+        if (target) {
+          t.shots += 1;
+          const grenade = !!tp.grenadeEvery && t.shots % tp.grenadeEvery === 0;
+          const shot: AttackProfile = {
+            targeting: 'AUTO',
+            style: 'PROJECTILE',
+            damage: t.damage,
+            cooldownSec: tp.fireCooldownSec,
+            rangePx: tp.rangePx,
+            projectileSpeed: grenade ? tp.projectileSpeed * 0.6 : tp.projectileSpeed,
+            splashRadiusPx: grenade ? (tp.grenadeRadiusPx ?? 26) * areaMul : 0,
+          };
+          t.facingAngle = Math.atan2(target.y - t.y, target.x - t.x);
+          const mx = t.x + Math.cos(t.facingAngle) * 7;
+          const my = t.y - 4 + Math.sin(t.facingAngle) * 5;
+          this.spawnProjectile(
+            mx,
+            my,
+            target.x - mx,
+            target.y - my,
+            shot,
+            grenade ? t.damage * (tp.grenadeDamageMul ?? 2) : t.damage,
+            tp.rangePx,
+            t.evolved ? '#ffcf4a' : '#9fe8ff',
+            grenade ? 'MORTAR' : t.evolved ? 'GATLING' : 'RIFLE',
+            t.evolved
+          );
+          t.flashSec = 0.1;
+          t.fireCd = tp.fireCooldownSec;
+        } else {
+          t.fireCd = 0.1;
+        }
       }
+      if (t.lifeSec <= 0) {
+        t.alive = false;
+        if (tp.expireBurnDps) {
+          this.addZone(t.x, t.y, (tp.expireBurnRadiusPx ?? 20) * areaMul, tp.expireBurnDps, tp.expireBurnSec ?? 2, 'PLASMA');
+        }
+        continue;
+      }
+      this.turrets[w++] = t;
     }
-    this.mines.length = w;
+    this.turrets.length = w;
   }
 
   private addZone(x: number, y: number, radius: number, dps: number, life: number, kind: 'FIRE' | 'PLASMA' = 'FIRE'): void {
@@ -1719,6 +1869,9 @@ export class SurvivorEngine {
       return;
     }
     let amount = e.isElite || e.isBoss ? dmg * bonusVsElite : dmg;
+    if (e.markedSec > 0) {
+      amount *= MARK_DAMAGE_MUL;
+    }
     if (e.auraBuffed) {
       amount *= 0.7;
     }
@@ -1797,6 +1950,9 @@ export class SurvivorEngine {
   private damageAlly(a: Actor, dmg: number): void {
     a.sinceHitSec = 0;
     let rest = dmg;
+    if (this.commanderDef.passive === 'VANGUARD' && 'squadKey' in a && (a as SquadMemberState).def.role === 'FRONT') {
+      rest *= VANGUARD_FRONT_DAMAGE_TAKEN_MUL;
+    }
     if (a.shield > 0) {
       const absorbed = Math.min(a.shield, rest);
       a.shield -= absorbed;
@@ -1813,7 +1969,7 @@ export class SurvivorEngine {
     return this.findTarget(x, y, range, 'NEAREST');
   }
 
-  private findTarget(x: number, y: number, range: number, priority: 'NEAREST' | 'HIGHEST_HP'): EnemyState | null {
+  private findTarget(x: number, y: number, range: number, priority: 'NEAREST' | 'HIGHEST_HP', minRange = 0): EnemyState | null {
     const cand = this.hash.query(x, y, range + 24, this.scratch);
     let best: EnemyState | null = null;
     let bestScore = Infinity;
@@ -1826,7 +1982,7 @@ export class SurvivorEngine {
       const dy = e.y - y;
       const d2 = dx * dx + dy * dy;
       const reach = range + e.radius;
-      if (d2 > reach * reach) {
+      if (d2 > reach * reach || d2 < minRange * minRange) {
         continue;
       }
       const score = priority === 'HIGHEST_HP' ? -e.hp : d2;
@@ -1987,8 +2143,17 @@ export class SurvivorEngine {
   }
 
   private updateRegen(dt: number): void {
+    const fortify = this.commanderDef.passive === 'FORTIFY';
+    const fortifyCharging = fortify && this.isEntrenched;
     const regenShield = (a: Actor): void => {
       a.sinceHitSec += dt;
+      if (fortify) {
+        // 공병 대장: 포진 중에만 보호막을 초당 상한의 25%씩 충전
+        if (fortifyCharging && a.shield < a.maxShield) {
+          a.shield = Math.min(a.maxShield, a.shield + a.maxShield * FORTIFY_SHIELD_FILL_PER_SEC * dt);
+        }
+        return;
+      }
       if (a.maxShield > 0 && a.sinceHitSec >= SHIELD_REGEN_DELAY_SEC && a.shield < a.maxShield) {
         a.shield = Math.min(a.maxShield, a.shield + a.maxShield * 0.25 * dt);
       }
@@ -2176,7 +2341,8 @@ export class SurvivorEngine {
       hp,
       maxHp: hp,
       shield,
-      maxShield: shield,
+      // 공병 대장: 포진 중 충전되는 보호막 상한 (최대 체력 30%)
+      maxShield: this.commanderDef?.passive === 'FORTIFY' ? Math.max(shield, hp * FORTIFY_SHIELD_PCT) : shield,
       alive: true,
       sinceHitSec: 99,
       facingX: 1,

@@ -4,7 +4,7 @@ export type FactionId = 'IRONCLAD';
 /** AUTO: 스스로 가장 가까운 적을 조준 / FACING: 지휘관이 바라보는 방향으로 공격 */
 export type TargetingMode = 'AUTO' | 'FACING';
 
-export type AttackStyle = 'PROJECTILE' | 'PIERCE' | 'MELEE' | 'CONE' | 'PULSE' | 'HEAL' | 'CHAIN' | 'MINE';
+export type AttackStyle = 'PROJECTILE' | 'PIERCE' | 'MELEE' | 'CONE' | 'PULSE' | 'HEAL' | 'CHAIN' | 'TURRET';
 
 /** NEAREST: 가장 가까운 적 / HIGHEST_HP: 사거리 내 체력이 가장 높은 적 */
 export type TargetPriority = 'NEAREST' | 'HIGHEST_HP';
@@ -68,6 +68,32 @@ export interface AttackProfile {
   bonusVsElite?: number;
   /** 체력 비율이 이하로 떨어진 일반·엘리트 적 즉사 */
   executePct?: number;
+  /** 최소 사거리: 이보다 가까운 적은 노리지 않는다 (박격포) */
+  minRangePx?: number;
+  /** 연속 분사 시간: 발동 후 이 시간 동안 channelTickSec마다 판정 (화염) */
+  channelSec?: number;
+  channelTickSec?: number;
+  /** 이 레벨에서 냉각이 줄어드는 하한 (연속 분사형) */
+  minCooldownSec?: number;
+  /** TURRET: 설치형 포탑 성능 */
+  turret?: TurretProfile;
+}
+
+export interface TurretProfile {
+  lifeSec: number;
+  rangePx: number;
+  fireCooldownSec: number;
+  projectileSpeed: number;
+  /** 동시 유지 상한 = maxBase + 분대 레벨 (Lv1 3기 → Lv5 7기) */
+  maxBase: number;
+  /** N발마다 폭발 유탄 */
+  grenadeEvery?: number;
+  grenadeRadiusPx?: number;
+  grenadeDamageMul?: number;
+  /** 수명이 끝나 소멸할 때 남기는 화염 장판 */
+  expireBurnDps?: number;
+  expireBurnSec?: number;
+  expireBurnRadiusPx?: number;
 }
 
 export type ModuleId = 'RAPID' | 'MAGAZINE' | 'AREA' | 'SCOPE' | 'ARMOR' | 'CORE' | 'MOBILITY' | 'BEACON';
@@ -282,6 +308,10 @@ export interface SquadMemberState extends Actor {
   baseMaxHp: number;
   slotIndex: number;
   cooldown: number;
+  /** 연속 분사 잔여 시간과 다음 판정까지 남은 시간 */
+  channelSec: number;
+  channelTickSec: number;
+  channelTicks: number;
 }
 
 export interface EnemyState {
@@ -305,6 +335,8 @@ export interface EnemyState {
   /** 예비동작이 끝날 때 물어뜯을 대상 */
   windupTarget: Actor | null;
   windupReflectPct: number;
+  /** 현장 사령관 [표적 표식]: 남은 시간 동안 받는 피해 증가 */
+  markedSec: number;
   facingAngle: number;
   isElite: boolean;
   isBoss: boolean;
@@ -384,6 +416,8 @@ export interface ProjectileState {
   hitIds: number[];
   bonusVsElite: number;
   executePct: number;
+  /** 적중한 적에게 [표적 표식]을 남긴다 (지휘관 사격) */
+  marks?: boolean;
   alive: boolean;
 }
 
@@ -438,16 +472,22 @@ export interface ChestState {
   alive: boolean;
 }
 
-export interface MineState {
+/** 포탑 공병이 설치한 고정 포탑 */
+export interface TurretState {
   id: number;
+  squadKey: string;
   x: number;
   y: number;
-  armSec: number;
+  lifeSec: number;
+  maxLifeSec: number;
+  fireCd: number;
+  shots: number;
+  /** 설치 시점에 확정된 1발 피해 (레벨·모듈·포진 반영) */
   damage: number;
-  splashRadiusPx: number;
-  burnDps: number;
-  burnSec: number;
-  evolved?: boolean;
+  profile: TurretProfile;
+  facingAngle: number;
+  flashSec: number;
+  evolved: boolean;
   alive: boolean;
 }
 

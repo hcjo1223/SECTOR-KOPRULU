@@ -2125,8 +2125,9 @@ function drawSapper32(
   const back = isBackDir(dir);
   const s = sideSign(dir);
   const evolved = isEvolvedPalette(palette);
-  const mineRamp = makeRamp8([96, 104, 84], [34, 38, 30], sp.trim.t4);
-  const led: Rgb = f === 0 ? (evolved ? [255, 215, 74] : [255, 60, 52]) : [120, 24, 26];
+  // 포탑 공병: 접이식 포탑 포드 (금속 몸체 + 시안 센서)
+  const mineRamp = makeRamp8(sp.metal.t3, sp.metal.t0, sp.white);
+  const led: Rgb = f === 0 ? (evolved ? [255, 215, 74] : [95, 224, 255]) : [32, 96, 140];
   const hazard = sp.trim.t3;
 
   const mine = (x: number, y: number, rx: number): void => {
@@ -2136,7 +2137,7 @@ function drawSapper32(
     c.px(x + 1, y - 1, OUTLINE_RGB);
   };
 
-  // 등짐: 지뢰 3단 랙
+  // 등짐: 접이식 포탑 포드 랙
   const paintPack = (): void => {
     const px = 15.5 - s * 3;
     c.partDome(px, 13, 6.2, 5.6, makeRamp8(sp.metal.t2, sp.metal.t0, sp.metal.t4), { trim: sp.trim, trimBottom: true });
@@ -2152,7 +2153,7 @@ function drawSapper32(
     paintPack();
   } else {
     stamp8DirSheet(c, palette, frame, dir, anim, 0, sp.trim.t4, false);
-    // 정면: 견갑 위에 고정한 원반 지뢰 랙
+    // 정면: 견갑 위에 고정한 포탑 포드 랙
     if (s >= 0) mine(6, 9, 3.4);
     if (s <= 0) mine(25, 9, 3.4);
     // 허리 탄띠: 경고 줄무늬
@@ -2168,7 +2169,7 @@ function drawSapper32(
   c.px(ax + (s < 0 ? -1 : 1), 1, led);
 
   if (anim === 'ATTACK') {
-    // 설치: 발치 앞에 지뢰를 박고 흙먼지와 격발 스파크가 튄다 (이펙트 레이어)
+    // 설치: 발치 앞에 포탑 포드를 내려놓고 흙먼지와 스파크가 튄다 (이펙트 레이어)
     c.fxBegin();
     const mx = 16 + dx * 9;
     const my = 27 + dy * 2;
@@ -2182,7 +2183,7 @@ function drawSapper32(
     c.stampMuzzleBlast(16 + dx * 6, 22 + dy * 4, dx * 0.6, 1, f, evolved ? 'PLASMA' : 'FIRE');
     c.fxEnd();
   } else if (!back) {
-    // 손에 든 원반 지뢰
+    // 손에 든 포탑 포드
     const hx = s < 0 ? 5 : 26;
     mine(hx, 22 + f, 3.8);
     c.px(hx - 2, 23 + f, hazard);
@@ -3474,6 +3475,86 @@ export function renderSpriteSheet(
   return { width, height, data, pivot: { x: 16, y: SPRITE_BASELINE_Y }, palette: getSpritePalette16(archetype, palette) };
 }
 
+/**
+ * 포탑 공병이 설치하는 센트리 포탑 (32x32, 발 기준선 31).
+ * 삼각 지지대 + 받침 + 8방향 회전 포탑 머리. 진화형은 금장 쌍열 중포탑 + 탄약 드럼.
+ */
+export function renderTurretPixels(
+  palette: FactionPalette,
+  dir: SpriteDir8,
+  evolved: boolean,
+  firing: boolean
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const c = new SculptCanvas32();
+  const sp = buildStudioPalette(palette);
+  const metal = makeRamp8(sp.metal.t3, sp.metal.t0, sp.white);
+  const dark = makeRamp8(sp.metal.t2, sp.metal.t0, sp.metal.t4);
+  const { dx, dy } = dir8Vector(dir);
+  // 삼각 지지대
+  c.partCapsule(15.5, 24, 8, 30, 1.2, dark);
+  c.partCapsule(15.5, 24, 23, 30, 1.2, dark);
+  c.partCapsule(15.5, 24, 15.5, 30.5, 1.2, metal);
+  // 받침 + 회전축
+  c.partDome(15.5, 24, evolved ? 6 : 5, 2.6, sp.body, { trim: sp.trim, trimBottom: true });
+  const hx = 15.5;
+  const hy = evolved ? 17 : 18;
+  const back = dy < -0.3;
+  const len = evolved ? 11 : 9;
+  const offsets = evolved ? [-1.6, 1.6] : [0];
+  const barrels = (): void => {
+    for (const o of offsets) {
+      const ox = -dy * o;
+      const oy = dx * o * 0.7;
+      const tx = hx + ox + dx * len;
+      const ty = hy + oy + dy * len * 0.7;
+      c.partCapsule(hx + ox, hy + oy, tx, ty, evolved ? 1.3 : 1.05, metal);
+      c.px(tx, ty, evolved ? sp.trim.t4 : sp.metal.t4);
+    }
+  };
+  if (back) barrels();
+  c.partDome(hx, hy, evolved ? 6.2 : 5.2, evolved ? 4.6 : 4.0, evolved ? makeRamp8(sp.trim.t3, sp.trim.t0, sp.white) : sp.body, {
+    trim: sp.trim,
+    trimBottom: true,
+  });
+  // 조준 센서
+  if (!back) {
+    const ex = hx + dx * 2.5;
+    const ey = hy - 1 + dy;
+    c.px(ex, ey, evolved ? [255, 215, 74] : sp.eyeGlow);
+    c.px(ex + 1, ey, sp.white);
+    c.px(ex, ey + 1, OUTLINE_RGB);
+  }
+  if (evolved) {
+    // 측면 탄약 드럼
+    const side = dx >= 0 ? -1 : 1;
+    c.partDome(hx + side * 6, hy + 2, 2.4, 2.4, dark, { trim: sp.trim, trimBottom: true });
+  }
+  if (!back) barrels();
+  const out = new Uint8ClampedArray(c.body);
+  outlineBuf(out);
+  if (firing) {
+    // 총구 섬광 (외곽선 바깥에 덧그림)
+    for (const o of offsets) {
+      const fx = Math.round(hx - dy * o + dx * (len + 2));
+      const fy = Math.round(hy + dx * o * 0.7 + dy * (len + 2) * 0.7);
+      const put = (x: number, y: number, col: Rgb): void => {
+        if (x < 0 || y < 0 || x >= SPRITE_SIZE || y >= SPRITE_SIZE) return;
+        const i = (y * SPRITE_SIZE + x) * 4;
+        out[i] = col[0];
+        out[i + 1] = col[1];
+        out[i + 2] = col[2];
+        out[i + 3] = 255;
+      };
+      put(fx, fy, [255, 255, 255]);
+      put(fx + 1, fy, [255, 230, 140]);
+      put(fx - 1, fy, [255, 230, 140]);
+      put(fx, fy + 1, [255, 170, 60]);
+      put(fx, fy - 1, [255, 170, 60]);
+    }
+  }
+  return { width: SPRITE_SIZE, height: SPRITE_SIZE, data: out };
+}
+
 /** 하위 호환용 ASCII 실루엣 맵 추출기 */
 export function getSpriteMap(archetype: SpriteArchetype): readonly string[] {
   const buf = renderSpritePixels(archetype, {
@@ -3701,7 +3782,7 @@ export type ExplosionVariant = 'STANDARD' | 'PLASMA' | 'ACID';
 export const EXPLOSION_FRAME_COUNT = 5;
 
 /**
- * 5프레임 28x28 볼륨 클러스터 폭발 픽셀 스프라이트 (박격포·다연장·지뢰·자폭충):
+ * 5프레임 28x28 볼륨 클러스터 폭발 픽셀 스프라이트 (박격포·다연장·포탑 유탄·자폭충):
  * - F0: 백열 십자 코어 섬광 + 초기 화구
  * - F1: 다중 볼륨 화구 클러스터 팽창
  * - F2: 최대 화구 + 외곽 충격파 도트 + 불똥 파편
