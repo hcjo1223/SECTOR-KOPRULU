@@ -8,14 +8,14 @@
       "fromSec": 0,
       "toSec": 9999,
       "rateStart": 0.9,
-      "rateEnd": 4.5
+      "rateEnd": 3.9
     },
     {
       "enemyId": "crawler",
       "fromSec": 60,
       "toSec": 9999,
       "rateStart": 0.4,
-      "rateEnd": 2.6
+      "rateEnd": 2.2
     },
     {
       "enemyId": "bloater",
@@ -65,6 +65,62 @@
       "toSec": 9999,
       "rateStart": 0.06,
       "rateEnd": 0.36
+    },
+    {
+      "enemyId": "clawling",
+      "fromSec": 90,
+      "toSec": 9999,
+      "rateStart": 0.12,
+      "rateEnd": 0.9
+    },
+    {
+      "enemyId": "hive_spiker",
+      "fromSec": 180,
+      "toSec": 9999,
+      "rateStart": 0.05,
+      "rateEnd": 0.3
+    },
+    {
+      "enemyId": "hive_beetle",
+      "fromSec": 260,
+      "toSec": 9999,
+      "rateStart": 0.04,
+      "rateEnd": 0.24
+    },
+    {
+      "enemyId": "hive_acid",
+      "fromSec": 320,
+      "toSec": 9999,
+      "rateStart": 0.05,
+      "rateEnd": 0.3
+    },
+    {
+      "enemyId": "lumen_warden",
+      "fromSec": 400,
+      "toSec": 9999,
+      "rateStart": 0.05,
+      "rateEnd": 0.28
+    },
+    {
+      "enemyId": "lumen_prism",
+      "fromSec": 430,
+      "toSec": 9999,
+      "rateStart": 0.04,
+      "rateEnd": 0.22
+    },
+    {
+      "enemyId": "lumen_lancer",
+      "fromSec": 460,
+      "toSec": 9999,
+      "rateStart": 0.04,
+      "rateEnd": 0.22
+    },
+    {
+      "enemyId": "lumen_orb",
+      "fromSec": 490,
+      "toSec": 9999,
+      "rateStart": 0.04,
+      "rateEnd": 0.22
     }
   ],
   "events": [
@@ -112,6 +168,12 @@
     },
     {
       "atSec": 270,
+      "kind": "MINIBOSS",
+      "enemyId": "hive_will",
+      "count": 1
+    },
+    {
+      "atSec": 285,
       "kind": "ELITE",
       "enemyId": "bloater",
       "count": 2
@@ -121,6 +183,12 @@
       "kind": "ENCIRCLE",
       "enemyId": "mite",
       "count": 48
+    },
+    {
+      "atSec": 305,
+      "kind": "ELITE",
+      "enemyId": "hive_beetle",
+      "count": 2
     },
     {
       "atSec": 330,
@@ -154,15 +222,21 @@
     },
     {
       "atSec": 450,
+      "kind": "MINIBOSS",
+      "enemyId": "lumen_archbishop",
+      "count": 1
+    },
+    {
+      "atSec": 470,
       "kind": "ELITE",
-      "enemyId": "shelled",
+      "enemyId": "lumen_warden",
       "count": 2
     },
     {
       "atSec": 480,
       "kind": "CROSSING",
-      "enemyId": "mite",
-      "count": 40
+      "enemyId": "clawling",
+      "count": 34
     },
     {
       "atSec": 510,

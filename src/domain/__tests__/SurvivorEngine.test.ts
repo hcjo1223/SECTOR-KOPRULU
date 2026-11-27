@@ -108,7 +108,7 @@ describe('SurvivorEngine', () => {
   });
 
   it('squad follows the commander when it moves', () => {
-    const e = new SurvivorEngine('LUMEN', undefined, 2);
+    const e = withStarter(new SurvivorEngine('IRONCLAD', undefined, 2), 'ic_rifle');
     e.setMoveInput(1, 0);
     e.step(90);
     const c = e.commander;
@@ -259,6 +259,36 @@ describe('SurvivorEngine', () => {
     e.step(8);
     expect(c.hp + c.shield).toBe(hp0);
     expect(mite.attackFlashSec).toBe(0);
+  });
+
+  it('Nova Taskforce is the only player faction; hive and lumen units fight as enemies', () => {
+    const factions = getFactions();
+    expect(factions.map((f) => f.id)).toEqual(['IRONCLAD']);
+    expect(factions[0].name).toBe('노바 기동군');
+    expect(getAllSquadUnits().every((u) => u.id.startsWith('ic_'))).toBe(true);
+    const enemyIds = new Set(getAllEnemies().map((e) => e.id));
+    for (const id of ['clawling', 'hive_spiker', 'hive_acid', 'hive_beetle', 'hive_will', 'lumen_warden', 'lumen_prism', 'lumen_lancer', 'lumen_orb', 'lumen_archbishop']) {
+      expect(enemyIds.has(id), id).toBe(true);
+    }
+    const w = getWaveTable();
+    const scheduled = new Set([...w.streams.map((s) => s.enemyId), ...w.events.map((ev) => ev.enemyId)]);
+    for (const id of enemyIds) {
+      if (id !== 'splitter_half') expect(scheduled.has(id) || ['matron', 'queen', 'spire', 'nest'].includes(id), `${id} scheduled`).toBe(true);
+    }
+  });
+
+  it('the hive mid-boss summons clawlings instead of mites', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 31);
+    e.commander.cooldown = 1e9;
+    const boss = e.spawnEnemyAt('hive_will', e.commander.x + 120, e.commander.y);
+    boss.isBoss = false;
+    for (let i = 0; i < 30 * 30 && !e.enemies.some((x) => x.def.id === 'clawling'); i += 1) {
+      e.commander.hp = e.commander.maxHp;
+      e.step(1);
+    }
+    expect(e.enemies.some((x) => x.def.id === 'clawling')).toBe(true);
+    // 갈퀴충 웨이브는 1:30부터라 그 전에 나타난 갈퀴충은 소환된 하수인이다
+    expect(e.elapsedSec).toBeLessThan(90);
   });
 });
 

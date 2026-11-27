@@ -680,7 +680,7 @@ class SculptCanvas32 {
 
 /**
  * IMG_2485.png / IMG_2486.png 의 156색 인덱스를 진영 팔레트로 매핑하는 테이블 생성기.
- * - 기본 철갑 연합 팔레트(#4f7fb8)일 때는 IMG_2485.png / IMG_2486.png 원본 RGB를 100% 그대로 반환한다.
+ * - 기본 노바 기동군 팔레트(#4f7fb8)일 때는 IMG_2485.png / IMG_2486.png 원본 RGB를 100% 그대로 반환한다.
  */
 function buildRef8DirColorLut(
   palette: FactionPalette,
@@ -819,7 +819,7 @@ function detectCommanderFaction(palette: FactionPalette): 'IRONCLAD' | 'HIVE' | 
   return 'IRONCLAD';
 }
 
-// ─────────────────────────── 1. 철갑 연합 (IRONCLAD UNION) ───────────────────────────
+// ─────────────────────────── 1. 노바 기동군 (NOVA TASKFORCE) ───────────────────────────
 
 function drawSoldier32(
   c: SculptCanvas32,
@@ -991,7 +991,7 @@ function drawDrone32(
   }
 }
 
-// ─────────────────────────── 2. 적응 군체 (ADAPTIVE HIVE) ───────────────────────────
+// ─────────────────────────── 2. 적응 군체 (ADAPTIVE HIVE · 적 진영) ───────────────────────────
 
 function drawHiveCommander32(
   c: SculptCanvas32,
@@ -1130,7 +1130,7 @@ function drawBeetle32(
   }
 }
 
-// ─────────────────────────── 3. 성휘 교단 (LUMEN ORDER) ───────────────────────────
+// ─────────────────────────── 3. 성휘 교단 (LUMEN ORDER · 적 진영) ───────────────────────────
 
 function drawLumenCommander32(
   c: SculptCanvas32,
@@ -1460,7 +1460,7 @@ function drawMatron32(
 }
 
 
-// ─────────────────────────── 5. 신규 12종 32x32 전용 드로잉 (M5.1 철갑 분대 4 + M6 블라이트 8) ───────────────────────────
+// ─────────────────────────── 5. 신규 12종 32x32 전용 드로잉 (M5.1 노바 기동군 분대 4 + M6 블라이트 8) ───────────────────────────
 
 function isBackDir(dir: SpriteDir8): boolean {
   return dir === 'N' || dir === 'NE' || dir === 'NW';
@@ -1632,7 +1632,7 @@ function glowEyes(c: SculptCanvas32, x: number, y: number, spread: number, col: 
   }
 }
 
-// ── 철갑 연합 신규 분대 4종 ──
+// ── 노바 기동군 신규 분대 4종 ──
 
 function drawSniper32(
   c: SculptCanvas32,
@@ -3074,79 +3074,6 @@ export function renderGemPixels(
     if (tier === 3) {
       setPx(cx, cy - radius - 1, white);
     }
-  }
-
-  return { width: size, height: size, data };
-}
-
-export function renderSlimeTilePixels(
-  palette: FactionPalette,
-  frame: number = 0
-): { width: number; height: number; data: Uint8ClampedArray } {
-  const size = 28;
-  const data = new Uint8ClampedArray(size * size * 4);
-  const f = Math.abs(Math.round(frame)) % 2;
-  const pri = hexToRgb(palette.primary);
-  const sec = hexToRgb(palette.secondary);
-  const acc = hexToRgb(palette.accent);
-  const crust = darken(sec, 0.45);
-  const midPool = mixRgb(sec, acc, 0.38);
-  const brightAcid = lighten(acc, 0.25);
-
-  const cx = 13.5;
-  const cy = 13.5;
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const dx = x - cx;
-      const dy = y - cy;
-      const angle = Math.atan2(dy, dx);
-      const wobble =
-        Math.sin(angle * 3 + 0.7) * 1.4 +
-        Math.cos(angle * 5 - 1.1) * 0.9 +
-        (f === 1 ? Math.sin(angle * 4) * 0.4 : 0);
-      const dist = Math.hypot(dx, dy) + wobble;
-      if (dist > 12.6) {
-        continue;
-      }
-      let col: Rgb;
-      let alpha = 215;
-      if (dist > 11.2) {
-        col = OUTLINE_RGB;
-        alpha = 195;
-      } else if (dist > 9.4) {
-        col = crust;
-      } else if (dist > 7.2) {
-        col = sec;
-      } else if (dist > 5.0) {
-        col = pri;
-      } else if (dist > 2.8) {
-        col = midPool;
-      } else {
-        col = acc;
-      }
-      const i = (y * size + x) * 4;
-      data[i] = col[0];
-      data[i + 1] = col[1];
-      data[i + 2] = col[2];
-      data[i + 3] = alpha;
-    }
-  }
-
-  const setBubble = (bx: number, by: number, c: Rgb): void => {
-    const i = (by * size + bx) * 4;
-    data[i] = c[0];
-    data[i + 1] = c[1];
-    data[i + 2] = c[2];
-    data[i + 3] = 245;
-  };
-  if (f === 0) {
-    setBubble(10, 11, brightAcid);
-    setBubble(11, 11, [245, 255, 210]);
-    setBubble(17, 15, brightAcid);
-  } else {
-    setBubble(10, 10, [245, 255, 210]);
-    setBubble(16, 14, [245, 255, 210]);
-    setBubble(12, 17, brightAcid);
   }
 
   return { width: size, height: size, data };

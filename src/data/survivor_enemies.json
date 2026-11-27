@@ -228,5 +228,185 @@
       "secondary": "#2a3a14",
       "accent": "#e0f070"
     }
+  },
+  {
+    "id": "clawling",
+    "name": "군체 갈퀴충",
+    "hp": 16,
+    "damage": 5,
+    "contactCooldownSec": 0.7,
+    "speed": 60,
+    "radius": 5,
+    "xp": 2,
+    "sprite": "CLAW",
+    "scale": 1,
+    "palette": {
+      "primary": "#8f4fa8",
+      "secondary": "#4e2a5e",
+      "accent": "#b8e04a"
+    }
+  },
+  {
+    "id": "hive_spiker",
+    "name": "군체 가시투척충",
+    "behavior": "SPITTER",
+    "hp": 26,
+    "damage": 6,
+    "contactCooldownSec": 1.0,
+    "speed": 34,
+    "radius": 5,
+    "xp": 3,
+    "sprite": "SPITTER",
+    "scale": 1,
+    "palette": {
+      "primary": "#8f4fa8",
+      "secondary": "#4e2a5e",
+      "accent": "#b8e04a"
+    }
+  },
+  {
+    "id": "hive_acid",
+    "name": "군체 산성낭",
+    "behavior": "BOMBER",
+    "hp": 30,
+    "damage": 14,
+    "contactCooldownSec": 1.0,
+    "speed": 44,
+    "radius": 6,
+    "xp": 3,
+    "sprite": "SPEWER",
+    "scale": 1.05,
+    "palette": {
+      "primary": "#8f4fa8",
+      "secondary": "#4e2a5e",
+      "accent": "#b8e04a"
+    }
+  },
+  {
+    "id": "hive_beetle",
+    "name": "군체 껍질갑충",
+    "behavior": "SHELLED",
+    "hp": 110,
+    "damage": 12,
+    "contactCooldownSec": 1.1,
+    "speed": 24,
+    "radius": 8,
+    "xp": 6,
+    "sprite": "BEETLE",
+    "scale": 1.3,
+    "palette": {
+      "primary": "#8f4fa8",
+      "secondary": "#4e2a5e",
+      "accent": "#b8e04a"
+    }
+  },
+  {
+    "id": "hive_will",
+    "name": "군체 의지",
+    "behavior": "QUEEN",
+    "hp": 2400,
+    "damage": 22,
+    "contactCooldownSec": 0.9,
+    "speed": 40,
+    "radius": 13,
+    "xp": 70,
+    "sprite": "COMMANDER",
+    "scale": 2.2,
+    "minionId": "clawling",
+    "palette": {
+      "primary": "#8f4fa8",
+      "secondary": "#4e2a5e",
+      "accent": "#b8e04a"
+    }
+  },
+  {
+    "id": "lumen_warden",
+    "name": "교단 수호기사",
+    "behavior": "SHELLED",
+    "hp": 70,
+    "damage": 12,
+    "contactCooldownSec": 1.0,
+    "speed": 30,
+    "radius": 6,
+    "xp": 5,
+    "sprite": "KNIGHT",
+    "scale": 1.1,
+    "palette": {
+      "primary": "#e0c060",
+      "secondary": "#7a5a20",
+      "accent": "#5fd8f0"
+    }
+  },
+  {
+    "id": "lumen_prism",
+    "name": "교단 프리즘 포대",
+    "behavior": "SPITTER",
+    "hp": 40,
+    "damage": 9,
+    "contactCooldownSec": 1.0,
+    "speed": 26,
+    "radius": 6,
+    "xp": 4,
+    "sprite": "PRISM",
+    "scale": 1.1,
+    "palette": {
+      "primary": "#e0c060",
+      "secondary": "#7a5a20",
+      "accent": "#5fd8f0"
+    }
+  },
+  {
+    "id": "lumen_lancer",
+    "name": "교단 광선창병",
+    "behavior": "CHARGER",
+    "hp": 48,
+    "damage": 13,
+    "contactCooldownSec": 0.9,
+    "speed": 32,
+    "radius": 6,
+    "xp": 4,
+    "sprite": "LANCER",
+    "scale": 1.1,
+    "palette": {
+      "primary": "#e0c060",
+      "secondary": "#7a5a20",
+      "accent": "#5fd8f0"
+    }
+  },
+  {
+    "id": "lumen_orb",
+    "name": "교단 공명구체",
+    "behavior": "BOMBER",
+    "hp": 36,
+    "damage": 18,
+    "contactCooldownSec": 1.0,
+    "speed": 40,
+    "radius": 6,
+    "xp": 4,
+    "sprite": "ORB",
+    "scale": 1.05,
+    "palette": {
+      "primary": "#e0c060",
+      "secondary": "#7a5a20",
+      "accent": "#5fd8f0"
+    }
+  },
+  {
+    "id": "lumen_archbishop",
+    "name": "교단 대주교",
+    "behavior": "SPIRE",
+    "hp": 4200,
+    "damage": 10,
+    "contactCooldownSec": 1.0,
+    "speed": 0,
+    "radius": 13,
+    "xp": 90,
+    "sprite": "COMMANDER",
+    "scale": 2.2,
+    "palette": {
+      "primary": "#e0c060",
+      "secondary": "#7a5a20",
+      "accent": "#5fd8f0"
+    }
   }
 ]
