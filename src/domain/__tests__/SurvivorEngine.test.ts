@@ -176,8 +176,18 @@ describe('SurvivorEngine', () => {
     expect(e.phase).toBe('CHEST');
     expect(e.chestResult).toEqual({ kind: 'EVOLVE', fromId: 'ic_rifle', intoId: 'ic_gatling' });
     expect(e.squad.every((m) => m.def.id === 'ic_gatling')).toBe(true);
+    // 진화하면 분대는 Lv1(1명)로 돌아가고, 다시 5명까지 모을 수 있다
+    const sq = e.getSquad('ic_rifle')!;
+    expect(sq.level).toBe(1);
+    expect(e.squad).toHaveLength(1);
+    expect(e.squad[0].hp).toBe(e.squad[0].maxHp);
+    expect(e.canEvolve(sq)).toBe(false);
     e.confirmChest();
     expect(e.phase).toBe('RUNNING');
+    for (let lv = 2; lv <= 5; lv += 1) e.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_rifle', nextLevel: lv });
+    expect(sq.level).toBe(5);
+    expect(e.squad).toHaveLength(5);
+    expect(e.squad.every((m) => m.def.id === 'ic_gatling')).toBe(true);
   });
 
   it('elites drop a supply chest', () => {
@@ -536,6 +546,34 @@ describe('SurvivorEngine', () => {
     expect(cd(e, 1)).toBeCloseTo(2.4, 5);
     expect(cd(e, 5)).toBeLessThan(cd(e, 1));
     expect((e as unknown as { channelCooldown(a: unknown, l: number, r: number): number }).channelCooldown(getSquadUnitDef('ic_flamer').attack, 5, 0.3)).toBeCloseTo(0.7, 5);
+  });
+
+  it('fast sniper rounds never tunnel through small enemies (swept collision)', () => {
+    let shots = 0;
+    let hits = 0;
+    for (let trial = 0; trial < 20; trial += 1) {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_engineer', 100 + trial), 'ic_sniper');
+      e.step(60);
+      e.commander.cooldown = 1e9;
+      const m = e.squad[0];
+      const ang = trial * 0.31;
+      const dist = 120 + trial * 6;
+      const t = e.spawnEnemyAt('mite', m.x + Math.cos(ang) * dist, m.y + Math.sin(ang) * dist);
+      t.speed = 0;
+      t.maxHp = t.hp = 1000;
+      m.cooldown = 0;
+      let fired = false;
+      for (let i = 0; i < 45; i += 1) {
+        e.step(1);
+        if (e.projectiles.some((p) => p.visual === 'SNIPER')) fired = true;
+      }
+      if (fired) {
+        shots += 1;
+        if (t.hp < 1000) hits += 1;
+      }
+    }
+    expect(shots).toBe(20);
+    expect(hits).toBe(20);
   });
 });
 

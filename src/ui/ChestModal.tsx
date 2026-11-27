@@ -41,6 +41,7 @@ export const ChestModal: React.FC = () => {
         </div>
         <div className="mt-2 text-base font-semibold text-slate-100">{into.name}</div>
         <div className="mt-1 text-xs text-slate-300">{into.description}</div>
+        <div className="mt-2 text-[11px] text-amber-200/90">분대가 Lv1(1명)로 돌아갑니다. 레벨업으로 다시 5명까지 모으세요.</div>
       </>
     );
   } else if (result.kind === 'UPGRADE') {
