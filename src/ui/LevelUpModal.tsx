@@ -29,27 +29,37 @@ export const LevelUpModal: React.FC = () => {
     return null;
   }
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/65 p-2">
-      <div className="w-full max-w-2xl">
+    <div className="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-black/65 p-2">
+      <div className="w-full max-w-3xl">
         <div className="mb-2 text-center font-pixel text-base text-amber-300 sm:text-xl">LEVEL {hud.level}</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {offers.map((offer, i) => {
-            const t = describeOffer(offer);
-            const sprite = t.unitId ? getSpriteDataUrl(getSquadUnitDef(t.unitId).sprite, engine.faction.palette) : null;
+            const t = describeOffer(offer, engine.faction.unitPool);
+            const def = t.unitId ? getSquadUnitDef(t.unitId) : null;
+            const sprite = def ? getSpriteDataUrl(def.sprite, engine.paletteFor(def)) : null;
+            const isModule = !!t.moduleId;
             return (
               <button
                 key={i}
                 type="button"
                 onClick={() => chooseOffer(i)}
-                className="flex cursor-pointer items-start gap-2 rounded border border-slate-600 bg-slate-900/95 p-2.5 text-left hover:border-amber-400 hover:bg-slate-800 sm:flex-col"
+                className={`flex cursor-pointer items-start gap-2 rounded border bg-slate-900/95 p-2.5 text-left hover:border-amber-400 hover:bg-slate-800 sm:flex-col ${
+                  isModule ? 'border-cyan-700' : 'border-slate-600'
+                }`}
               >
-                {sprite && <img src={sprite} alt="" className="pixelated h-10 w-10 shrink-0" />}
-                <div>
-                  <div className="font-mono-tech text-[10px] text-amber-300">
+                {sprite ? (
+                  <img src={sprite} alt="" className="pixelated h-10 w-10 shrink-0" />
+                ) : (
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-slate-800 text-lg">{isModule ? '⚙' : '✚'}</div>
+                )}
+                <div className="min-w-0">
+                  <div className={`font-mono-tech text-[10px] ${isModule ? 'text-cyan-300' : 'text-amber-300'}`}>
                     {i + 1}. {t.tag}
                   </div>
                   <div className="text-sm font-semibold text-slate-100">{t.title}</div>
-                  <div className="mt-0.5 text-[11px] leading-snug text-slate-400">{t.body}</div>
+                  {t.tagLine && <div className="font-mono-tech text-[10px] text-slate-400">{t.tagLine}</div>}
+                  <div className="mt-0.5 text-[11px] leading-snug text-slate-300">{t.body}</div>
+                  {t.hint && <div className="mt-1 text-[10px] leading-snug text-amber-200/80">{t.hint}</div>}
                 </div>
               </button>
             );

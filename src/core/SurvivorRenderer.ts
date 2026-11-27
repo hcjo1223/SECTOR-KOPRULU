@@ -422,6 +422,52 @@ export class SurvivorRenderer {
       }
     }
 
+    // ── 4b. 불길 장판 · 지뢰 · 적 위험 지대 · 엘리트 특성 표시 · 보급 상자
+    const blink = Math.sin(this.timeSec * 10) > 0;
+    for (const z of engine.zones) {
+      const a = Math.min(1, z.lifeSec / 0.6);
+      gf.circle(Math.round(z.x), Math.round(z.y), z.radius).fill({ color: 0xff6a2a, alpha: 0.22 * a });
+      gf.circle(Math.round(z.x), Math.round(z.y), z.radius * 0.55).fill({ color: 0xffc04a, alpha: 0.18 * a });
+    }
+    for (const mine of engine.mines) {
+      const x = Math.round(mine.x);
+      const y = Math.round(mine.y);
+      gf.rect(x - 3, y - 2, 6, 4).fill({ color: OUTLINE_HEX });
+      gf.rect(x - 2, y - 1, 4, 2).fill({ color: 0x4a505c });
+      if (mine.armSec <= 0 && blink) {
+        gf.rect(x, y - 1, 1, 1).fill({ color: 0xff4040 });
+      }
+    }
+    for (const h of engine.hazards) {
+      const col = hexNum(h.color);
+      const x = Math.round(h.x);
+      const y = Math.round(h.y);
+      if (h.armSec > 0) {
+        const k = 1 - h.armSec / Math.max(0.01, h.maxArmSec);
+        gf.circle(x, y, h.radius).stroke({ width: 1, color: col, alpha: blink ? 0.9 : 0.45 });
+        gf.circle(x, y, h.radius * k).fill({ color: col, alpha: 0.18 });
+      } else if (h.dps > 0) {
+        gf.circle(x, y, h.radius).fill({ color: col, alpha: 0.28 });
+        gf.circle(x, y, h.radius).stroke({ width: 1, color: col, alpha: 0.6 });
+      }
+    }
+    for (const e of engine.enemies) {
+      if (e.affixes.includes('AURA')) {
+        drawPixelCircle(gf, Math.round(e.x), Math.round(e.y), 56, 0xc070ff, 0.4, 1, 3);
+      }
+      if (e.shield > 0) {
+        drawPixelCircle(gf, Math.round(e.x), Math.round(e.y) - 6, Math.round(e.radius + 4), 0x7fe3ff, 0.85, 1, 2);
+      }
+    }
+    for (const ch of engine.chests) {
+      const x = Math.round(ch.x);
+      const y = Math.round(ch.y) - (blink ? 1 : 0);
+      gemFx.rect(x - 6, y - 5, 12, 10).fill({ color: OUTLINE_HEX });
+      gemFx.rect(x - 5, y - 4, 10, 8).fill({ color: 0xc08a3a });
+      gemFx.rect(x - 5, y - 1, 10, 1).fill({ color: 0x7a5420 });
+      gemFx.rect(x - 1, y - 2, 2, 3).fill({ color: 0xffe08a });
+    }
+
     // ── 5. 지휘관 · 부대원 · 블라이트 무리 8방향(8-Dir) & 다중 상태(IDLE / WALK / ATTACK) 32x32 스프라이트
     const walkTick = Math.floor(this.timeSec * 10);
     const idleTick = Math.floor(this.timeSec * 3);
@@ -438,7 +484,7 @@ export class SurvivorRenderer {
           : idleTick % 2;
     this.placeSprite(
       c.id,
-      getSpriteTexture(c.def.sprite, palette, cmdFrame, cmdDir, cmdAnim),
+      getSpriteTexture(c.def.sprite, engine.paletteFor(c.def), cmdFrame, cmdDir, cmdAnim),
       camX,
       camY,
       1,
@@ -471,7 +517,7 @@ export class SurvivorRenderer {
       const tint = m.sinceHitSec < 0.1 ? 0xff7070 : 0xffffff;
       this.placeSprite(
         m.id,
-        getSpriteTexture(m.def.sprite, palette, mFrame, mDir, mAnim),
+        getSpriteTexture(m.def.sprite, engine.paletteFor(m.def), mFrame, mDir, mAnim),
         mx,
         my,
         1,
@@ -561,6 +607,14 @@ export class SurvivorRenderer {
         pg.rect(x - 1, y - 1, 2, 2).fill({ color: col });
         pg.rect(x, y, 1, 1).fill({ color: 0xffffff });
       }
+    }
+
+    // ── 6b. 적 투사체 (포자충 산성탄 · 포자 탑 고리 · 모체 탄막)
+    for (const sh of engine.enemyShots) {
+      const x = Math.round(lerp(sh.px, sh.x));
+      const y = Math.round(lerp(sh.py, sh.y));
+      pg.circle(x, y, sh.radius).fill({ color: 0x1a0a0a });
+      pg.circle(x, y, Math.max(1, sh.radius - 1)).fill({ color: hexNum(sh.color) });
     }
 
     // ── 7. 7종 픽셀 전투 이펙트 (CONE, BOOM, PULSE, SLASH, HEAL, DEATH, LEVEL)
@@ -820,6 +874,27 @@ export class SurvivorRenderer {
         }
         break;
       }
+
+      case 'CHAIN': {
+        const mx = (f.x + f.x2) / 2 + Math.sin(f.lifeSec * 90) * 3;
+        const my = (f.y + f.y2) / 2 + Math.cos(f.lifeSec * 90) * 3;
+        eg.moveTo(f.x, f.y).lineTo(mx, my).lineTo(f.x2, f.y2).stroke({ width: 1.5, color: col, alpha: t });
+        break;
+      }
+      case 'EVOLVE':
+        drawPixelCircle(eg, fx, fy, Math.round(f.radius * (1.4 - t)), col, t, 2, 2);
+        eg.rect(fx - 1, Math.round(fy - 14 * p - 6), 2, 6).fill({ color: 0xffffff, alpha: t });
+        break;
+      case 'TELE_LINE':
+        eg.moveTo(f.x, f.y).lineTo(f.x2, f.y2).stroke({ width: Math.round(this.timeSec * 10) % 2 === 0 ? 3 : 2, color: col, alpha: 0.35 + 0.4 * p });
+        break;
+      case 'TELE_CIRCLE':
+        drawPixelCircle(eg, fx, fy, Math.round(f.radius), col, Math.round(this.timeSec * 10) % 2 === 0 ? 0.9 : 0.45, 1, 2);
+        eg.circle(fx, fy, f.radius * p).fill({ color: col, alpha: 0.2 });
+        break;
+      case 'SHIELD_PULSE':
+        drawPixelCircle(eg, fx, fy, Math.round(f.radius * (1 - t * 0.8)), col, t, 2, 2);
+        break;
 
       case 'LEVEL': {
         // 레벨업 팡파르: 수직 황금 픽셀 빛기둥 + 8방위 확장 픽셀 스타 링

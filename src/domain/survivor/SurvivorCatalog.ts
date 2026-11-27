@@ -1,11 +1,15 @@
 import enemiesJson from '../../data/survivor_enemies.json';
 import factionsJson from '../../data/survivor_factions.json';
+import modulesJson from '../../data/survivor_modules.json';
 import unitsJson from '../../data/survivor_units.json';
 import wavesJson from '../../data/survivor_waves.json';
 import type {
   EnemyDef,
   FactionDef,
   FactionId,
+  CommanderDef,
+  ModuleDef,
+  ModuleId,
   SquadUnitDef,
   WaveTable,
 } from './types';
@@ -14,6 +18,7 @@ const FACTIONS = factionsJson as FactionDef[];
 const UNITS = unitsJson as SquadUnitDef[];
 const ENEMIES = enemiesJson as EnemyDef[];
 const WAVES = wavesJson as WaveTable;
+const MODULES = modulesJson as ModuleDef[];
 
 const unitById = new Map<string, SquadUnitDef>(UNITS.map((u) => [u.id, u]));
 const enemyById = new Map<string, EnemyDef>(ENEMIES.map((e) => [e.id, e]));
@@ -56,4 +61,21 @@ export function getAllEnemies(): readonly EnemyDef[] {
 
 export function getWaveTable(): WaveTable {
   return WAVES;
+}
+
+export function getCommander(factionId: FactionId, commanderId?: string): CommanderDef {
+  const f = getFaction(factionId);
+  return f.commanders.find((c) => c.id === commanderId) ?? f.commanders[0];
+}
+
+export function getAllModules(): readonly ModuleDef[] {
+  return MODULES;
+}
+
+export function getModuleDef(id: ModuleId): ModuleDef {
+  const m = MODULES.find((x) => x.id === id);
+  if (!m) {
+    throw new Error(`Unknown module: ${id}`);
+  }
+  return m;
 }

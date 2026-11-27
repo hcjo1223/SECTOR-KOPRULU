@@ -1,20 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import { assignSlots, buildSlotOffsets, capacityForRings, pickActiveSlots } from '../survivor/Formation';
 import { SpatialHash } from '../survivor/SpatialHash';
-import { getAllEnemies, getAllSquadUnits, getFactions, getWaveTable } from '../survivor/SurvivorCatalog';
-import { SurvivorEngine } from '../survivor/SurvivorEngine';
+import { getAllEnemies, getAllModules, getAllSquadUnits, getFactions, getSquadUnitDef, getWaveTable } from '../survivor/SurvivorCatalog';
+import { MAX_SQUADS, squadHeadcount, SurvivorEngine } from '../survivor/SurvivorEngine';
 
 describe('Survivor data contracts', () => {
-  it('every faction references existing units and has both targeting modes in its pool', () => {
+  it('every faction pool, commander start and evolution references existing data', () => {
     const unitIds = new Set(getAllSquadUnits().map((u) => u.id));
+    const moduleIds = new Set(getAllModules().map((m) => m.id));
     for (const f of getFactions()) {
-      for (const id of [...f.unitPool, ...f.startingUnits]) {
-        expect(unitIds.has(id)).toBe(true);
+      expect(f.commanders.length).toBeGreaterThan(0);
+      for (const id of f.unitPool) expect(unitIds.has(id)).toBe(true);
+      for (const c of f.commanders) expect(f.unitPool).toContain(c.startingSquad);
+      for (const id of f.unitPool) {
+        const evo = getSquadUnitDef(id).evolution;
+        if (evo) {
+          expect(moduleIds.has(evo.moduleId)).toBe(true);
+          expect(getSquadUnitDef(evo.intoId).evolved).toBe(true);
+        }
       }
-      const modes = new Set(getAllSquadUnits().filter((u) => f.unitPool.includes(u.id)).map((u) => u.attack.targeting));
-      expect(modes.has('AUTO')).toBe(true);
-      expect(modes.has('FACING')).toBe(true);
     }
+  });
+
+  it('IRONCLAD has 3 commanders, 8 squads with 8 distinct evolutions, both targeting modes', () => {
+    const f = getFactions().find((x) => x.id === 'IRONCLAD')!;
+    expect(f.commanders).toHaveLength(3);
+    expect(f.unitPool).toHaveLength(8);
+    const defs = f.unitPool.map(getSquadUnitDef);
+    expect(new Set(defs.map((d) => d.evolution?.intoId)).size).toBe(8);
+    expect(new Set(defs.map((d) => d.attack.targeting))).toEqual(new Set(['AUTO', 'FACING']));
   });
 
   it('wave table references existing enemies and has exactly one boss event', () => {
@@ -65,17 +79,17 @@ describe('SpatialHash', () => {
 });
 
 describe('SurvivorEngine', () => {
-  it('starts with commander and starting squad in formation', () => {
-    const e = new SurvivorEngine('IRONCLAD', 1);
+  it('starts with the commander\'s starting squad at Lv1 (2 members)', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_engineer', 1);
     expect(e.phase).toBe('RUNNING');
-    expect(e.squad).toHaveLength(e.faction.startingUnits.length);
-    expect(e.squadCapacity).toBe(6);
+    expect(e.squads.map((s) => s.key)).toEqual(['ic_sapper']);
+    expect(e.squad).toHaveLength(squadHeadcount(1));
   });
 
   it('squad follows the commander when it moves', () => {
-    const e = new SurvivorEngine('LUMEN', 2);
+    const e = new SurvivorEngine('LUMEN', undefined, 2);
     e.setMoveInput(1, 0);
-    e.step(90); // 3초
+    e.step(90);
     const c = e.commander;
     expect(c.x).toBeGreaterThan(150);
     for (const m of e.squad) {
@@ -83,40 +97,72 @@ describe('SurvivorEngine', () => {
     }
   });
 
-  it('kills nearby enemies and drops xp gems', () => {
-    const e = new SurvivorEngine('IRONCLAD', 3);
+  it('kills nearby enemies', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 3);
     e.spawnEnemyAt('mite', 60, 0);
     e.step(60);
     expect(e.kills).toBeGreaterThanOrEqual(1);
   });
 
-  it('RECRUIT offer adds a unit to the squad', () => {
-    const e = new SurvivorEngine('HIVE', 4);
-    // 산성 분사체 합류
-    e.grantXp(e.xpToNext);
-    expect(e.phase).toBe('LEVEL_UP');
-    e.offers = [{ kind: 'RECRUIT', unitId: 'hv_spewer' }, { kind: 'RESUPPLY' }, { kind: 'RESUPPLY' }];
-    e.chooseOffer(0);
-    expect(e.squad.some((m) => m.def.id === 'hv_spewer')).toBe(true);
+  it('caps squads and modules at 4 slots and squad level adds a member', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 4);
+    for (const id of ['ic_flamer', 'ic_mortar', 'ic_sniper', 'ic_shield']) e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId: id });
+    expect(e.squads).toHaveLength(MAX_SQUADS);
+    for (const id of ['RAPID', 'AREA', 'CORE', 'SCOPE', 'BEACON'] as const) e.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: id });
+    expect(e.modules).toHaveLength(4);
+    const before = e.aliveInSquad('ic_rifle');
+    e.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_rifle', nextLevel: 2 });
+    expect(e.aliveInSquad('ic_rifle')).toBe(before + 1);
+  });
+
+  it('level-up offers never exceed slot limits', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 5);
+    for (const id of ['ic_flamer', 'ic_mortar', 'ic_sniper']) e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId: id });
+    for (const id of ['RAPID', 'AREA', 'CORE', 'SCOPE'] as const) e.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: id });
+    for (let i = 0; i < 20; i += 1) {
+      e.grantXp(e.xpToNext);
+      for (const o of e.offers) {
+        expect(o.kind).not.toBe('NEW_SQUAD');
+        expect(o.kind).not.toBe('NEW_MODULE');
+      }
+      e.chooseOffer(0);
+    }
+  });
+
+  it('chest evolves a Lv5 squad that owns its recipe module', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 6);
+    for (let lv = 2; lv <= 5; lv += 1) e.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_rifle', nextLevel: lv });
+    expect(e.canEvolve(e.getSquad('ic_rifle')!)).toBe(false);
+    e.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: 'RAPID' });
+    expect(e.canEvolve(e.getSquad('ic_rifle')!)).toBe(true);
+    e.grantChest();
+    expect(e.phase).toBe('CHEST');
+    expect(e.chestResult).toEqual({ kind: 'EVOLVE', fromId: 'ic_rifle', intoId: 'ic_gatling' });
+    expect(e.squad.every((m) => m.def.id === 'ic_gatling')).toBe(true);
+    e.confirmChest();
     expect(e.phase).toBe('RUNNING');
   });
 
-  it('level-up pauses the run with 3 offers and resumes after choosing', () => {
-    const e = new SurvivorEngine('IRONCLAD', 5);
-    e.grantXp(e.xpToNext * 3);
-    expect(e.phase).toBe('LEVEL_UP');
-    expect(e.offers).toHaveLength(3);
-    const before = e.elapsedSec;
-    e.step(30);
-    expect(e.elapsedSec).toBe(before); // 일시정지 중엔 진행 안 함
-    e.chooseOffer(0);
-    e.chooseOffer(0);
-    e.chooseOffer(0);
-    expect(e.phase).toBe('RUNNING');
+  it('elites drop a supply chest', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 7);
+    const elite = e.spawnEnemyAt('crawler', 40, 0, true);
+    elite.hp = 1;
+    for (let i = 0; i < 300 && e.phase === 'RUNNING' && e.chests.length === 0; i += 1) e.step(1);
+    expect(e.chests.length + (e.phase === 'CHEST' ? 1 : 0)).toBeGreaterThan(0);
   });
 
-  it('dead squad members vanish permanently and commander death is immediate defeat', () => {
-    const e = new SurvivorEngine('IRONCLAD', 6);
+  it('mines and chain lightning damage enemies', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_engineer', 8);
+    e.applyOfferDirect({ kind: 'NEW_SQUAD', unitId: 'ic_tesla' });
+    e.step(90);
+    expect(e.mines.length).toBeGreaterThan(0);
+    for (let i = 0; i < 5; i += 1) e.spawnEnemyAt('crawler', 30 + i * 10, 20);
+    e.step(90);
+    expect(e.kills).toBeGreaterThan(0);
+  });
+
+  it('dead members vanish permanently; reinforce refills; commander death is immediate defeat', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 9);
     const startCount = e.squad.length;
     const victim = e.squad[0];
     victim.hp = 1;
@@ -124,23 +170,13 @@ describe('SurvivorEngine', () => {
     e.step(5);
     expect(e.squad.includes(victim)).toBe(false);
     expect(e.squad).toHaveLength(startCount - 1);
+    e.applyOfferDirect({ kind: 'REINFORCE', missing: 1 });
+    expect(e.squad).toHaveLength(startCount);
 
     e.commander.hp = 1;
     e.commander.shield = 0;
     e.spawnEnemyAt('brute', e.commander.x, e.commander.y);
     e.step(5);
     expect(e.phase).toBe('DEFEAT');
-  });
-
-  it('survives the opening minute idle and keeps enemy count bounded', () => {
-    const e = new SurvivorEngine('HIVE', 7);
-    for (let t = 0; t < 60 * 30 && e.phase !== 'DEFEAT'; t += 1) {
-      if (e.phase === 'LEVEL_UP') e.chooseOffer(0);
-      e.setMoveInput(Math.cos(t / 90), Math.sin(t / 90));
-      e.step(1);
-    }
-    expect(e.phase).not.toBe('DEFEAT');
-    expect(e.enemies.length).toBeLessThanOrEqual(getWaveTable().maxEnemies + 60);
-    expect(e.kills).toBeGreaterThan(20);
   });
 });

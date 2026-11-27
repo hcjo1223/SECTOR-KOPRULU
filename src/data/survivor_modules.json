@@ -1,0 +1,50 @@
+[
+  {
+    "id": "RAPID",
+    "name": "고속 장전",
+    "summary": "공격 속도",
+    "perLevel": "레벨당 공격 주기 -7%"
+  },
+  {
+    "id": "MAGAZINE",
+    "name": "확장 탄창",
+    "summary": "투사체·연쇄 수",
+    "perLevel": "Lv1·3·5에 투사체·연쇄 +1"
+  },
+  {
+    "id": "AREA",
+    "name": "광역 탄두",
+    "summary": "공격 범위",
+    "perLevel": "레벨당 폭발·원뿔·파동·장판 범위 +10%"
+  },
+  {
+    "id": "SCOPE",
+    "name": "정밀 조준경",
+    "summary": "사거리·치명타",
+    "perLevel": "레벨당 사거리 +8%, 치명타(2배) 확률 +5%"
+  },
+  {
+    "id": "ARMOR",
+    "name": "강화 장갑",
+    "summary": "체력",
+    "perLevel": "레벨당 지휘관·부대원 최대 체력 +15%"
+  },
+  {
+    "id": "CORE",
+    "name": "증폭 코어",
+    "summary": "피해량",
+    "perLevel": "레벨당 피해량 +10%"
+  },
+  {
+    "id": "MOBILITY",
+    "name": "전술 기동",
+    "summary": "이동 속도",
+    "perLevel": "레벨당 부대 이동속도 +6%"
+  },
+  {
+    "id": "BEACON",
+    "name": "수집 비콘",
+    "summary": "흡수 반경",
+    "perLevel": "레벨당 경험치·상자 흡수 반경 +20%"
+  }
+]

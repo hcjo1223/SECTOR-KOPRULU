@@ -5,40 +5,102 @@
     "subtitle": "IRONCLAD UNION",
     "traitName": "포진",
     "traitDesc": "지휘관이 0.5초 이상 멈춰 서면 부대 전체 공격력 +35%, 사거리 +25%.",
-    "commander": {
-      "id": "ironclad_marshal",
-      "name": "현장 사령관",
-      "hp": 120,
-      "shield": 0,
-      "moveSpeed": 74,
-      "radius": 6,
-      "pickupRadius": 56,
-      "attack": {
-        "targeting": "AUTO",
-        "style": "PROJECTILE",
-        "damage": 6,
-        "cooldownSec": 0.7,
-        "rangePx": 120,
-        "projectileSpeed": 260
-      },
-      "sprite": "COMMANDER"
-    },
     "unitPool": [
-      "ic_rifleman",
+      "ic_rifle",
       "ic_flamer",
       "ic_mortar",
-      "ic_repair_drone"
-    ],
-    "startingUnits": [
-      "ic_rifleman",
-      "ic_rifleman",
-      "ic_flamer"
+      "ic_sniper",
+      "ic_shield",
+      "ic_sapper",
+      "ic_medic",
+      "ic_tesla"
     ],
     "palette": {
       "primary": "#4f7fb8",
       "secondary": "#2d4a6e",
       "accent": "#f2c14e"
-    }
+    },
+    "commanders": [
+      {
+        "id": "ic_marshal",
+        "name": "현장 사령관",
+        "hp": 120,
+        "shield": 0,
+        "moveSpeed": 74,
+        "radius": 6,
+        "pickupRadius": 56,
+        "attack": {
+          "targeting": "AUTO",
+          "style": "PROJECTILE",
+          "damage": 6,
+          "cooldownSec": 0.7,
+          "rangePx": 120,
+          "projectileSpeed": 260
+        },
+        "sprite": "COMMANDER",
+        "title": "입문 · 사격 특화",
+        "passive": "GUNNERY",
+        "passiveName": "화력 통제",
+        "passiveDesc": "사격·관통형 분대의 공격 속도 +15%.",
+        "startingSquad": "ic_rifle"
+      },
+      {
+        "id": "ic_engineer",
+        "name": "공병 대장",
+        "hp": 135,
+        "shield": 0,
+        "moveSpeed": 70,
+        "radius": 6,
+        "pickupRadius": 56,
+        "attack": {
+          "targeting": "AUTO",
+          "style": "PROJECTILE",
+          "damage": 6,
+          "cooldownSec": 0.7,
+          "rangePx": 120,
+          "projectileSpeed": 260
+        },
+        "sprite": "COMMANDER",
+        "title": "거점 · 설치 특화",
+        "passive": "FORTIFY",
+        "passiveName": "신속 축성",
+        "passiveDesc": "포진 발동 대기 0.5초→0.2초. 포진 중 지뢰·연쇄 번개 피해 +40%.",
+        "startingSquad": "ic_sapper",
+        "paletteOverride": {
+          "primary": "#6b8f5a",
+          "secondary": "#38502c",
+          "accent": "#f2c14e"
+        }
+      },
+      {
+        "id": "ic_vanguard",
+        "name": "돌격 지휘관",
+        "hp": 105,
+        "shield": 0,
+        "moveSpeed": 80,
+        "radius": 6,
+        "pickupRadius": 56,
+        "attack": {
+          "targeting": "AUTO",
+          "style": "PROJECTILE",
+          "damage": 6,
+          "cooldownSec": 0.7,
+          "rangePx": 120,
+          "projectileSpeed": 260
+        },
+        "sprite": "COMMANDER",
+        "title": "기동 · 전방 특화",
+        "passive": "VANGUARD",
+        "passiveName": "돌파 명령",
+        "passiveDesc": "이동 중 지휘관 방향형 분대 피해 +25%. 지휘관 이동속도 +8%.",
+        "startingSquad": "ic_flamer",
+        "paletteOverride": {
+          "primary": "#b85a4f",
+          "secondary": "#6e2d26",
+          "accent": "#f2c14e"
+        }
+      }
+    ]
   },
   {
     "id": "HIVE",
@@ -46,41 +108,42 @@
     "subtitle": "ADAPTIVE HIVE",
     "traitName": "점액 자취",
     "traitDesc": "지휘관이 지나간 자리에 점액이 남는다. 점액 위 아군 공격속도 +30%·이동속도 +20%, 적 이동속도 -30%.",
-    "commander": {
-      "id": "hive_matriarch",
-      "name": "군체 의지",
-      "hp": 110,
-      "shield": 0,
-      "moveSpeed": 80,
-      "radius": 6,
-      "pickupRadius": 56,
-      "attack": {
-        "targeting": "AUTO",
-        "style": "PROJECTILE",
-        "damage": 5,
-        "cooldownSec": 0.6,
-        "rangePx": 110,
-        "projectileSpeed": 220
-      },
-      "sprite": "COMMANDER"
-    },
     "unitPool": [
       "hv_clawling",
       "hv_spitter",
       "hv_spewer",
       "hv_beetle"
     ],
-    "startingUnits": [
-      "hv_clawling",
-      "hv_clawling",
-      "hv_spitter",
-      "hv_spitter"
-    ],
     "palette": {
       "primary": "#8f4fa8",
       "secondary": "#4e2a5e",
       "accent": "#b8e04a"
-    }
+    },
+    "commanders": [
+      {
+        "id": "hive_matriarch",
+        "name": "군체 의지",
+        "hp": 110,
+        "shield": 0,
+        "moveSpeed": 80,
+        "radius": 6,
+        "pickupRadius": 56,
+        "attack": {
+          "targeting": "AUTO",
+          "style": "PROJECTILE",
+          "damage": 5,
+          "cooldownSec": 0.6,
+          "rangePx": 110,
+          "projectileSpeed": 220
+        },
+        "sprite": "COMMANDER",
+        "title": "프로토타입 · 4종",
+        "passive": "NONE",
+        "passiveName": "—",
+        "passiveDesc": "전용 지휘관 3명은 추후 추가 예정.",
+        "startingSquad": "hv_clawling"
+      }
+    ]
   },
   {
     "id": "LUMEN",
@@ -88,39 +151,41 @@
     "subtitle": "LUMEN ORDER",
     "traitName": "광휘 보호막",
     "traitDesc": "모든 아군이 보호막을 가진다. 2.5초간 피해를 받지 않으면 보호막이 초당 25%씩 재생된다.",
-    "commander": {
-      "id": "lumen_hierarch",
-      "name": "대주교",
-      "hp": 90,
-      "shield": 50,
-      "moveSpeed": 72,
-      "radius": 6,
-      "pickupRadius": 60,
-      "attack": {
-        "targeting": "AUTO",
-        "style": "PROJECTILE",
-        "damage": 7,
-        "cooldownSec": 0.8,
-        "rangePx": 130,
-        "projectileSpeed": 280
-      },
-      "sprite": "COMMANDER"
-    },
     "unitPool": [
       "lm_warden",
       "lm_prism",
       "lm_lancer",
       "lm_orb"
     ],
-    "startingUnits": [
-      "lm_warden",
-      "lm_prism",
-      "lm_prism"
-    ],
     "palette": {
       "primary": "#e0c060",
       "secondary": "#7a5a20",
       "accent": "#5fd8f0"
-    }
+    },
+    "commanders": [
+      {
+        "id": "lumen_hierarch",
+        "name": "대주교",
+        "hp": 90,
+        "shield": 50,
+        "moveSpeed": 72,
+        "radius": 6,
+        "pickupRadius": 60,
+        "attack": {
+          "targeting": "AUTO",
+          "style": "PROJECTILE",
+          "damage": 7,
+          "cooldownSec": 0.8,
+          "rangePx": 130,
+          "projectileSpeed": 280
+        },
+        "sprite": "COMMANDER",
+        "title": "프로토타입 · 4종",
+        "passive": "NONE",
+        "passiveName": "—",
+        "passiveDesc": "전용 지휘관 3명은 추후 추가 예정.",
+        "startingSquad": "lm_warden"
+      }
+    ]
   }
 ]

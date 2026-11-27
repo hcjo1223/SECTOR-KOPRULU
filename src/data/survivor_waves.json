@@ -8,42 +8,113 @@
       "fromSec": 0,
       "toSec": 9999,
       "rateStart": 0.9,
-      "rateEnd": 7.0
+      "rateEnd": 4.5
     },
     {
       "enemyId": "crawler",
       "fromSec": 60,
       "toSec": 9999,
       "rateStart": 0.4,
-      "rateEnd": 4.0
+      "rateEnd": 2.6
     },
     {
       "enemyId": "bloater",
       "fromSec": 150,
       "toSec": 9999,
       "rateStart": 0.15,
-      "rateEnd": 1.4
+      "rateEnd": 1.1
+    },
+    {
+      "enemyId": "charger",
+      "fromSec": 140,
+      "toSec": 9999,
+      "rateStart": 0.09,
+      "rateEnd": 0.54
+    },
+    {
+      "enemyId": "spitter_e",
+      "fromSec": 200,
+      "toSec": 9999,
+      "rateStart": 0.072,
+      "rateEnd": 0.42
+    },
+    {
+      "enemyId": "splitter",
+      "fromSec": 240,
+      "toSec": 9999,
+      "rateStart": 0.06,
+      "rateEnd": 0.36
     },
     {
       "enemyId": "brute",
       "fromSec": 300,
       "toSec": 9999,
       "rateStart": 0.08,
+      "rateEnd": 0.5
+    },
+    {
+      "enemyId": "bomber",
+      "fromSec": 360,
+      "toSec": 9999,
+      "rateStart": 0.09,
       "rateEnd": 0.6
+    },
+    {
+      "enemyId": "shelled",
+      "fromSec": 400,
+      "toSec": 9999,
+      "rateStart": 0.06,
+      "rateEnd": 0.36
     }
   ],
   "events": [
     {
-      "atSec": 120,
-      "kind": "ELITE",
-      "enemyId": "crawler",
-      "count": 3
+      "atSec": 60,
+      "kind": "CROSSING",
+      "enemyId": "mite",
+      "count": 28
     },
     {
-      "atSec": 240,
+      "atSec": 90,
+      "kind": "ELITE",
+      "enemyId": "crawler",
+      "count": 1
+    },
+    {
+      "atSec": 120,
+      "kind": "NEST",
+      "enemyId": "nest",
+      "count": 1
+    },
+    {
+      "atSec": 150,
+      "kind": "ELITE",
+      "enemyId": "crawler",
+      "count": 2
+    },
+    {
+      "atSec": 180,
+      "kind": "MINIBOSS",
+      "enemyId": "queen",
+      "count": 1
+    },
+    {
+      "atSec": 215,
+      "kind": "ELITE",
+      "enemyId": "charger",
+      "count": 2
+    },
+    {
+      "atSec": 245,
+      "kind": "CROSSING",
+      "enemyId": "crawler",
+      "count": 30
+    },
+    {
+      "atSec": 270,
       "kind": "ELITE",
       "enemyId": "bloater",
-      "count": 3
+      "count": 2
     },
     {
       "atSec": 300,
@@ -52,22 +123,64 @@
       "count": 48
     },
     {
+      "atSec": 330,
+      "kind": "ACID",
+      "enemyId": "mite",
+      "count": 5
+    },
+    {
+      "atSec": 335,
+      "kind": "ELITE",
+      "enemyId": "spitter_e",
+      "count": 2
+    },
+    {
       "atSec": 360,
+      "kind": "MINIBOSS",
+      "enemyId": "spire",
+      "count": 1
+    },
+    {
+      "atSec": 395,
       "kind": "ELITE",
       "enemyId": "brute",
       "count": 2
     },
     {
-      "atSec": 480,
-      "kind": "ELITE",
-      "enemyId": "brute",
-      "count": 4
+      "atSec": 420,
+      "kind": "NEST",
+      "enemyId": "nest",
+      "count": 2
     },
     {
-      "atSec": 520,
+      "atSec": 450,
+      "kind": "ELITE",
+      "enemyId": "shelled",
+      "count": 2
+    },
+    {
+      "atSec": 480,
+      "kind": "CROSSING",
+      "enemyId": "mite",
+      "count": 40
+    },
+    {
+      "atSec": 510,
+      "kind": "ELITE",
+      "enemyId": "brute",
+      "count": 3
+    },
+    {
+      "atSec": 525,
       "kind": "ENCIRCLE",
       "enemyId": "crawler",
       "count": 40
+    },
+    {
+      "atSec": 545,
+      "kind": "ACID",
+      "enemyId": "mite",
+      "count": 7
     },
     {
       "atSec": 570,

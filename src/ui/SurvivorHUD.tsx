@@ -1,5 +1,6 @@
 import React from 'react';
-import { getSquadUnitDef } from '../domain/survivor/SurvivorCatalog';
+import { getModuleDef } from '../domain/survivor/SurvivorCatalog';
+import { MAX_MODULES, MAX_SQUADS } from '../domain/survivor/SurvivorEngine';
 import { useSurvivorStore } from '../store/useSurvivorStore';
 import { formatTime } from './survivorLabels';
 
@@ -15,6 +16,8 @@ export const SurvivorHUD: React.FC = () => {
   const f = engine.faction;
   const xpRatio = hud.xp / hud.xpToNext;
   const hpRatio = hud.commanderHp / hud.commanderMaxHp;
+  const emptySquads = MAX_SQUADS - hud.squads.length;
+  const emptyModules = MAX_MODULES - hud.modules.length;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-1.5 font-mono-tech text-[10px] text-slate-200 sm:p-2.5 sm:text-xs">
@@ -31,25 +34,26 @@ export const SurvivorHUD: React.FC = () => {
             <div className="font-pixel text-sm text-slate-100 sm:text-lg">{formatTime(hud.elapsedSec)}</div>
             {hud.bossAlive && (
               <div className="mt-0.5 w-36 sm:w-56">
-                <div className="text-[9px] text-rose-300">블라이트 모체</div>
+                <div className="text-[9px] text-rose-300">{hud.bossName}</div>
                 <div className="h-1.5 overflow-hidden rounded-sm bg-slate-900/80">
                   <div className="h-full bg-rose-500" style={{ width: `${(hud.bossHp / hud.bossMaxHp) * 100}%` }} />
                 </div>
               </div>
             )}
+            {hud.banner && (
+              <div className="mt-1 rounded border border-amber-500/50 bg-slate-950/85 px-2 py-0.5 text-[10px] text-amber-200 sm:text-xs">{hud.banner}</div>
+            )}
           </div>
-          <div className="pointer-events-auto flex gap-1">
-            <button type="button" onClick={togglePause} className="cursor-pointer rounded border border-slate-700 bg-slate-950/80 px-2 py-0.5 hover:bg-slate-800">
-              {paused ? '▶' : 'II'}
-            </button>
-          </div>
+          <button type="button" onClick={togglePause} className="pointer-events-auto cursor-pointer rounded border border-slate-700 bg-slate-950/80 px-2 py-0.5 hover:bg-slate-800">
+            {paused ? '▶' : 'II'}
+          </button>
         </div>
       </div>
 
       <div className="flex items-end justify-between gap-2">
-        <div className="rounded bg-slate-950/70 px-1.5 py-1">
+        <div className="rounded bg-slate-950/75 px-1.5 py-1">
+          <div className="text-slate-400">{hud.commanderName}</div>
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">지휘관</span>
             <div className="h-1.5 w-20 overflow-hidden rounded-sm bg-slate-800 sm:w-28">
               <div className="h-full bg-emerald-400" style={{ width: `${hpRatio * 100}%` }} />
             </div>
@@ -64,15 +68,28 @@ export const SurvivorHUD: React.FC = () => {
             [{f.traitName}] {hud.traitActive ? 'ON' : 'OFF'}
           </div>
         </div>
-        <div className="rounded bg-slate-950/70 px-1.5 py-1 text-right">
-          <div className="text-slate-400">
-            부대 {hud.squadCount}/{hud.squadCapacity} · {hud.ringCount}링
-          </div>
-          {Object.entries(hud.squadByUnit).map(([id, n]) => (
-            <div key={id}>
-              {getSquadUnitDef(id).name} ×{n} <span className="text-amber-300">Lv{hud.unitLevels[id] ?? 1}</span>
+        <div className="min-w-0 rounded bg-slate-950/75 px-1.5 py-1 text-right">
+          {hud.squads.map((s) => (
+            <div key={s.key} className={s.evolved ? 'text-amber-300' : ''}>
+              {s.evolved ? '★ ' : ''}
+              {s.name} <span className="text-slate-400">{s.alive}/{s.headcount}</span>{' '}
+              <span className="text-sky-300">Lv{s.level}</span>
+              {s.evolveReady && <span className="ml-1 text-amber-300">진화↑</span>}
             </div>
           ))}
+          {Array.from({ length: emptySquads }, (_, i) => (
+            <div key={`es${i}`} className="text-slate-600">빈 분대 슬롯</div>
+          ))}
+          <div className="mt-0.5 flex flex-wrap justify-end gap-1 border-t border-slate-800 pt-0.5">
+            {hud.modules.map((m) => (
+              <span key={m.id} className="rounded bg-slate-800 px-1">
+                {getModuleDef(m.id).name} {m.level}
+              </span>
+            ))}
+            {Array.from({ length: emptyModules }, (_, i) => (
+              <span key={`em${i}`} className="rounded border border-dashed border-slate-700 px-1 text-slate-600">모듈</span>
+            ))}
+          </div>
         </div>
       </div>
 

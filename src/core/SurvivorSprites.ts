@@ -69,6 +69,18 @@ const ALL_ARCHETYPES: readonly SpriteArchetype[] = [
   'BLOATER',
   'BRUTE',
   'MATRON',
+  'SNIPER',
+  'SHIELDER',
+  'SAPPER',
+  'TESLA',
+  'CHARGER',
+  'SPORER',
+  'SPLITTER',
+  'BOMBER',
+  'SHELL',
+  'NEST',
+  'QUEEN',
+  'SPIRE',
 ];
 
 export function getAllArchetypes(): SpriteArchetype[] {
@@ -1452,6 +1464,261 @@ function drawMatron32(
   }
 }
 
+
+/**
+ * 32x32 전용 드로잉이 아직 없는 아키타입용 오리지널 12x12 실루엣 맵.
+ * 2배 확대 + 하단 음영 + 좌향 반전으로 32x32 8방향 버퍼에 맞춘다 (전용 드로잉 추가 시 교체).
+ */
+const LEGACY_MAPS: Partial<Record<SpriteArchetype, readonly string[]>> = {
+  SNIPER: [
+    '............',
+    '...oooo.....',
+    '..oddddo....',
+    '..odaapo....',
+    '..odhppo....',
+    '.oddppppoooo',
+    'okkkkkkkkkko',
+    '.odpppppoooo',
+    '..odpppdo...',
+    '..opo.opo...',
+    '..odo.odo...',
+    '..oo...oo...',
+  ],
+  SHIELDER: [
+    '....ooo.....',
+    '...ohppo....',
+    '...oaaao....',
+    '..oohppo.oo.',
+    '.oddppdooaao',
+    '.odpppdoahao',
+    '.odpppdoahao',
+    '.oddpddoahao',
+    '..oppppoaao.',
+    '..opoopooo..',
+    '..odoodo....',
+    '..oo..oo....',
+  ],
+  SAPPER: [
+    '....ooo.....',
+    '...ohppo....',
+    '..ooaaao....',
+    '.okkohppo...',
+    '.okkddppdo..',
+    '.okkdpppdo..',
+    '..oodpppdo..',
+    '...oddpddo..',
+    '...oppppo.oo',
+    '...opoopooao',
+    '...odoodo.oo',
+    '...oo..oo...',
+  ],
+  TESLA: [
+    '.....aa.....',
+    '....awwa....',
+    '.....oo.....',
+    '....ohho....',
+    '...okaako...',
+    '....ohho....',
+    '...okaako...',
+    '..ohhppppo..',
+    '.ohpppppddo.',
+    '.odddddddddo',
+    '..oo.oo.oo..',
+    '.oo..oo..oo.',
+  ],
+  CHARGER: [
+    '............',
+    '.a..........',
+    '.oao.oooo...',
+    '..oaohhppoo.',
+    '..ooppppppdo',
+    '.ohpkppppddo',
+    'oaapppppppdo',
+    '.oddppppddo.',
+    '..oddddddo..',
+    '..o.o..o.o..',
+    '.oo.oo.oo.oo',
+    '............',
+  ],
+  SPORER: [
+    '....oooo....',
+    '..ooaaaaoo..',
+    '.oaaahhaaao.',
+    '.oaaaaaaaao.',
+    '..oooppooo..',
+    '...ophhpo...',
+    '..oppkkppo..',
+    '..opkaakpo..',
+    '..odppppdo..',
+    '...odddo....',
+    '..o.o.o.o...',
+    '............',
+  ],
+  SPLITTER: [
+    '............',
+    '...oo..oo...',
+    '..ohpoohpo..',
+    '.ohppaappdo.',
+    '.opppaapppo.',
+    '.oaaaaaaaao.',
+    '.oppaappppo.',
+    '.ohppaapddo.',
+    '..odpoodpo..',
+    '...oo..oo...',
+    '..o.o..o.o..',
+    '............',
+  ],
+  BOMBER: [
+    '.....a......',
+    '....oao.....',
+    '...oaaao....',
+    '..oahwhao...',
+    '..oaaaaao...',
+    '..odaaado...',
+    '...oppppo...',
+    '..ohppppdo..',
+    '..oddddddo..',
+    '..o.o..o.o..',
+    '.o..o..o..o.',
+    '............',
+  ],
+  SHELL: [
+    '............',
+    '...oooooo...',
+    '..oaaaaaao..',
+    '.oahhhhhhao.',
+    'oahhppppphao',
+    'oaphpkpkppao',
+    'oappppppppao',
+    '.oddppppddo.',
+    '..oddddddo..',
+    '.o.o.oo.o.o.',
+    '............',
+    '............',
+  ],
+  NEST: [
+    '............',
+    '....oooo....',
+    '..oohhppoo..',
+    '.ohpkpppkpo.',
+    '.oppppaapdo.',
+    'ohpkpppppkdo',
+    'oppppaappddo',
+    'odpkpppkpddo',
+    'odddddddddo.',
+    'oaoaoaoaoaoo',
+    '............',
+    '............',
+  ],
+  QUEEN: [
+    '.a...aa...a.',
+    '.oa.oaao.ao.',
+    '..ooohhooo..',
+    '.ohhppppppo.',
+    'ohpakppkapdo',
+    'opppppppppdo',
+    'oaooppppooao',
+    'oa.oddddo.ao',
+    '.o.opppo..o.',
+    '...odpdo....',
+    '..oo.o.oo...',
+    '.o...o...o..',
+  ],
+  SPIRE: [
+    '.....aa.....',
+    '....oaao....',
+    '....ohpo....',
+    '...oapado...',
+    '...ohppdo...',
+    '..oapppado..',
+    '..ohpppddo..',
+    '..oapppado..',
+    '.ohpppppddo.',
+    '.oaappppaao.',
+    'oddddddddddo',
+    'oaoaoaoaoaoo',
+  ],
+};
+
+function renderLegacyUpscaled(
+  map: readonly string[],
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const size = SPRITE_SIZE;
+  const data = new Uint8ClampedArray(size * size * 4);
+  const primary = hexToRgb(palette.primary);
+  const accent = hexToRgb(palette.accent);
+  // 대기 2프레임째는 강조색이 은은히 밝아지는 호흡, 공격 프레임은 강하게 발광
+  const accentNow = anim === 'ATTACK' ? lighten(accent, 0.5) : frame % 2 === 1 ? lighten(accent, 0.22) : accent;
+  const colors: Record<string, Rgb> = {
+    o: OUTLINE_RGB,
+    p: primary,
+    d: hexToRgb(palette.secondary),
+    a: accentNow,
+    h: lighten(primary, 0.38),
+    w: [244, 246, 255],
+    k: [26, 29, 38],
+  };
+  const flip = dir === 'W' || dir === 'NW' || dir === 'SW';
+  const bob = anim === 'WALK' && frame % 2 === 1 ? 1 : 0;
+  const ox = 4;
+  const oy = 7 - bob;
+  const put = (px: number, py: number, c: Rgb): void => {
+    if (px < 0 || px >= size || py < 0 || py >= size) {
+      return;
+    }
+    const i = (py * size + px) * 4;
+    data[i] = c[0];
+    data[i + 1] = c[1];
+    data[i + 2] = c[2];
+    data[i + 3] = 255;
+  };
+  for (let y = 0; y < 12; y += 1) {
+    const row = (map[y] ?? '').padEnd(12, '.');
+    for (let x = 0; x < 12; x += 1) {
+      const key = row[x];
+      const base = colors[key];
+      if (!base) {
+        continue;
+      }
+      const sx = flip ? 11 - x : x;
+      for (let dy = 0; dy < 2; dy += 1) {
+        for (let dx = 0; dx < 2; dx += 1) {
+          const py = oy + y * 2 + dy;
+          let c = base;
+          if (key !== 'o' && key !== 'w') {
+            // 위쪽은 밝게, 아래쪽은 어둡게: 세로 볼륨 램프 + 블록 하단 음영
+            const k = (py - oy) / 24;
+            c = k < 0.4 ? lighten(base, (0.4 - k) * 0.35) : darken(base, (k - 0.4) * 0.45);
+            if (dy === 1) {
+              c = darken(c, 0.12);
+            }
+          }
+          put(ox + sx * 2 + dx, py, c);
+        }
+      }
+    }
+  }
+  if (anim === 'ATTACK') {
+    // 바라보는 방향 앞쪽 공격 섬광
+    const v = dir8Vector(dir);
+    const cx = Math.round(16 + v.dx * 11);
+    const cy = Math.round(18 + v.dy * 9) - bob;
+    const glow = lighten(accent, 0.7);
+    for (let yy = -2; yy <= 2; yy += 1) {
+      for (let xx = -2; xx <= 2; xx += 1) {
+        if (Math.abs(xx) + Math.abs(yy) <= (frame % 2 === 0 ? 3 : 2)) {
+          put(cx + xx, cy + yy, Math.abs(xx) + Math.abs(yy) <= 1 ? [255, 255, 255] : glow);
+        }
+      }
+    }
+  }
+  return { width: size, height: size, data };
+}
+
 /**
  * 순수 함수: 아키타입 + 팔레트 + 프레임 + 8방향(SpriteDir8) + 상태(IDLE|WALK|ATTACK) → 32x32 RGBA 픽셀 버퍼.
  */
@@ -1462,8 +1729,12 @@ export function renderSpritePixels(
   dir: SpriteDir8 = 'S',
   anim: SpriteAnim = 'IDLE'
 ): { width: number; height: number; data: Uint8ClampedArray } {
-  const canvas = new SculptCanvas32();
   const f = Math.abs(Math.round(frame));
+  const legacy = LEGACY_MAPS[archetype];
+  if (legacy) {
+    return renderLegacyUpscaled(legacy, palette, f, dir, anim);
+  }
+  const canvas = new SculptCanvas32();
 
   switch (archetype) {
     case 'COMMANDER': {

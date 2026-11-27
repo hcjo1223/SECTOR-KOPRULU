@@ -1,88 +1,603 @@
 [
   {
-    "id": "ic_rifleman", "name": "소총병", "faction": "IRONCLAD", "role": "BACK",
-    "description": "가장 가까운 적을 자동 사격하는 기본 보병.",
-    "hp": 40, "shield": 0, "moveSpeed": 82, "radius": 5,
-    "attack": { "targeting": "AUTO", "style": "PROJECTILE", "damage": 7, "cooldownSec": 0.55, "rangePx": 125, "projectileSpeed": 300 },
-    "sprite": "SOLDIER"
+    "id": "ic_rifle",
+    "name": "소총 분대",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "가장 가까운 적을 자동 사격",
+    "description": "기본 보병 분대. 가까운 적을 쉬지 않고 사격한다.",
+    "hp": 40,
+    "shield": 0,
+    "moveSpeed": 84,
+    "radius": 5,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "PROJECTILE",
+      "damage": 7,
+      "cooldownSec": 0.6,
+      "rangePx": 120,
+      "projectileSpeed": 300
+    },
+    "sprite": "SOLDIER",
+    "evolution": {
+      "moduleId": "RAPID",
+      "intoId": "ic_gatling"
+    }
   },
   {
-    "id": "ic_flamer", "name": "화염 방사병", "faction": "IRONCLAD", "role": "FRONT",
-    "description": "지휘관이 바라보는 방향으로 화염을 뿜어 원뿔 범위를 태운다.",
-    "hp": 75, "shield": 0, "moveSpeed": 78, "radius": 6,
-    "attack": { "targeting": "FACING", "style": "CONE", "damage": 9, "cooldownSec": 0.45, "rangePx": 48, "coneHalfAngleDeg": 32 },
-    "sprite": "FLAMER"
+    "id": "ic_flamer",
+    "name": "화염 분대",
+    "faction": "IRONCLAD",
+    "role": "FRONT",
+    "summary": "지휘관 방향으로 화염 원뿔",
+    "description": "지휘관이 바라보는 방향의 적을 원뿔 범위로 태운다.",
+    "hp": 70,
+    "shield": 0,
+    "moveSpeed": 80,
+    "radius": 6,
+    "attack": {
+      "targeting": "FACING",
+      "style": "CONE",
+      "damage": 8,
+      "cooldownSec": 0.45,
+      "rangePx": 46,
+      "coneHalfAngleDeg": 32
+    },
+    "sprite": "FLAMER",
+    "evolution": {
+      "moduleId": "AREA",
+      "intoId": "ic_incinerator"
+    }
   },
   {
-    "id": "ic_mortar", "name": "박격 보행기", "faction": "IRONCLAD", "role": "BACK",
-    "description": "지휘관 방향 원거리에 포탄을 떨궈 넓은 범위를 폭파한다.",
-    "hp": 60, "shield": 0, "moveSpeed": 70, "radius": 7,
-    "attack": { "targeting": "FACING", "style": "PROJECTILE", "damage": 22, "cooldownSec": 1.6, "rangePx": 170, "projectileSpeed": 170, "splashRadiusPx": 30, "coneHalfAngleDeg": 40 },
-    "sprite": "WALKER"
+    "id": "ic_mortar",
+    "name": "박격포 분대",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "지휘관 방향 원거리 범위 폭발",
+    "description": "지휘관 방향 먼 곳에 포탄을 떨궈 넓게 폭파한다.",
+    "hp": 50,
+    "shield": 0,
+    "moveSpeed": 74,
+    "radius": 7,
+    "attack": {
+      "targeting": "FACING",
+      "style": "PROJECTILE",
+      "damage": 20,
+      "cooldownSec": 1.6,
+      "rangePx": 170,
+      "projectileSpeed": 170,
+      "splashRadiusPx": 28,
+      "coneHalfAngleDeg": 40
+    },
+    "sprite": "WALKER",
+    "evolution": {
+      "moduleId": "MAGAZINE",
+      "intoId": "ic_mlrs"
+    }
   },
   {
-    "id": "ic_repair_drone", "name": "수리 드론", "faction": "IRONCLAD", "role": "BACK",
-    "description": "체력이 가장 낮은 아군(지휘관 포함)을 자동으로 수리한다.",
-    "hp": 30, "shield": 0, "moveSpeed": 90, "radius": 4,
-    "attack": { "targeting": "AUTO", "style": "HEAL", "damage": 8, "cooldownSec": 1.2, "rangePx": 90 },
-    "sprite": "DRONE"
+    "id": "ic_sniper",
+    "name": "저격 분대",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "체력 높은 적 우선 고화력 저격",
+    "description": "사거리 안에서 체력이 가장 높은 적을 노린다. 엘리트·보스 피해 +50%.",
+    "hp": 34,
+    "shield": 0,
+    "moveSpeed": 80,
+    "radius": 5,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "PROJECTILE",
+      "damage": 38,
+      "cooldownSec": 2.0,
+      "rangePx": 210,
+      "projectileSpeed": 520,
+      "priority": "HIGHEST_HP",
+      "bonusVsElite": 1.5
+    },
+    "sprite": "SNIPER",
+    "evolution": {
+      "moduleId": "SCOPE",
+      "intoId": "ic_executioner"
+    }
   },
-
   {
-    "id": "hv_clawling", "name": "갈퀴충", "faction": "HIVE", "role": "FRONT",
+    "id": "ic_shield",
+    "name": "방패 분대",
+    "faction": "IRONCLAD",
+    "role": "FRONT",
+    "summary": "적을 밀쳐내는 근접 탱커",
+    "description": "큰 방패로 적을 막고 밀쳐낸다. 진형 바깥을 지킨다.",
+    "hp": 150,
+    "shield": 0,
+    "moveSpeed": 78,
+    "radius": 7,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "MELEE",
+      "damage": 6,
+      "cooldownSec": 0.8,
+      "rangePx": 12,
+      "knockbackPx": 18
+    },
+    "sprite": "SHIELDER",
+    "evolution": {
+      "moduleId": "ARMOR",
+      "intoId": "ic_bulwark"
+    }
+  },
+  {
+    "id": "ic_sapper",
+    "name": "지뢰 공병",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "지나간 자리에 지뢰 설치",
+    "description": "주기적으로 자기 위치에 지뢰를 묻는다. 적이 밟으면 폭발.",
+    "hp": 40,
+    "shield": 0,
+    "moveSpeed": 82,
+    "radius": 5,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "MINE",
+      "damage": 24,
+      "cooldownSec": 2.4,
+      "rangePx": 0,
+      "splashRadiusPx": 26
+    },
+    "sprite": "SAPPER",
+    "evolution": {
+      "moduleId": "MOBILITY",
+      "intoId": "ic_minelayer"
+    }
+  },
+  {
+    "id": "ic_medic",
+    "name": "수리 드론",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "가장 다친 아군을 수리",
+    "description": "체력이 가장 낮은 아군(지휘관 포함)을 수리한다.",
+    "hp": 30,
+    "shield": 0,
+    "moveSpeed": 92,
+    "radius": 4,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "HEAL",
+      "damage": 8,
+      "cooldownSec": 1.2,
+      "rangePx": 90
+    },
+    "sprite": "DRONE",
+    "evolution": {
+      "moduleId": "BEACON",
+      "intoId": "ic_supply_drone"
+    }
+  },
+  {
+    "id": "ic_tesla",
+    "name": "테슬라 포탑병",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "적 사이를 튀는 연쇄 번개",
+    "description": "번개가 가까운 적들 사이를 2회 연쇄로 튄다.",
+    "hp": 45,
+    "shield": 0,
+    "moveSpeed": 76,
+    "radius": 6,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "CHAIN",
+      "damage": 10,
+      "cooldownSec": 1.3,
+      "rangePx": 100,
+      "chainJumps": 2,
+      "chainRadiusPx": 50
+    },
+    "sprite": "TESLA",
+    "evolution": {
+      "moduleId": "CORE",
+      "intoId": "ic_stormcoil"
+    }
+  },
+  {
+    "id": "ic_gatling",
+    "name": "개틀링 분대",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "초고속 연사",
+    "description": "소총 분대 진화. 탄막 수준의 연사.",
+    "hp": 55,
+    "shield": 0,
+    "moveSpeed": 84,
+    "radius": 5,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "PROJECTILE",
+      "damage": 7,
+      "cooldownSec": 0.16,
+      "rangePx": 130,
+      "projectileSpeed": 340
+    },
+    "sprite": "SOLDIER",
+    "evolved": true,
+    "paletteOverride": {
+      "primary": "#d8dde6",
+      "secondary": "#6a7486",
+      "accent": "#ffcf4a"
+    }
+  },
+  {
+    "id": "ic_incinerator",
+    "name": "소각 분대",
+    "faction": "IRONCLAD",
+    "role": "FRONT",
+    "summary": "넓은 화염 + 불길 장판",
+    "description": "화염 분대 진화. 화염이 닿은 곳에 불길이 남는다.",
+    "hp": 95,
+    "shield": 0,
+    "moveSpeed": 80,
+    "radius": 6,
+    "attack": {
+      "targeting": "FACING",
+      "style": "CONE",
+      "damage": 11,
+      "cooldownSec": 0.4,
+      "rangePx": 58,
+      "coneHalfAngleDeg": 38,
+      "burnDps": 14,
+      "burnSec": 2.5
+    },
+    "sprite": "FLAMER",
+    "evolved": true,
+    "paletteOverride": {
+      "primary": "#d8dde6",
+      "secondary": "#6a7486",
+      "accent": "#ffcf4a"
+    }
+  },
+  {
+    "id": "ic_mlrs",
+    "name": "다연장 포대",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "포탄 3발 동시 발사",
+    "description": "박격포 분대 진화. 부채꼴로 포탄 세 발을 쏟아붓는다.",
+    "hp": 70,
+    "shield": 0,
+    "moveSpeed": 74,
+    "radius": 7,
+    "attack": {
+      "targeting": "FACING",
+      "style": "PROJECTILE",
+      "damage": 22,
+      "cooldownSec": 1.4,
+      "rangePx": 180,
+      "projectileSpeed": 180,
+      "splashRadiusPx": 30,
+      "coneHalfAngleDeg": 45,
+      "multishot": 3,
+      "spreadDeg": 14
+    },
+    "sprite": "WALKER",
+    "evolved": true,
+    "paletteOverride": {
+      "primary": "#d8dde6",
+      "secondary": "#6a7486",
+      "accent": "#ffcf4a"
+    }
+  },
+  {
+    "id": "ic_executioner",
+    "name": "처형자 분대",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "관통 저격 + 빈사 처형",
+    "description": "저격 분대 진화. 관통탄, 엘리트·보스 피해 2배, 체력 15% 이하 적 즉사.",
+    "hp": 50,
+    "shield": 0,
+    "moveSpeed": 80,
+    "radius": 5,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "PIERCE",
+      "damage": 60,
+      "cooldownSec": 1.8,
+      "rangePx": 260,
+      "projectileSpeed": 560,
+      "pierce": 4,
+      "priority": "HIGHEST_HP",
+      "bonusVsElite": 2.0,
+      "executePct": 0.15
+    },
+    "sprite": "SNIPER",
+    "evolved": true,
+    "paletteOverride": {
+      "primary": "#d8dde6",
+      "secondary": "#6a7486",
+      "accent": "#ffcf4a"
+    }
+  },
+  {
+    "id": "ic_bulwark",
+    "name": "성벽 분대",
+    "faction": "IRONCLAD",
+    "role": "FRONT",
+    "summary": "피해 반사 철벽",
+    "description": "방패 분대 진화. 접촉한 적에게 받은 피해의 60%를 되돌려준다.",
+    "hp": 260,
+    "shield": 0,
+    "moveSpeed": 78,
+    "radius": 8,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "MELEE",
+      "damage": 10,
+      "cooldownSec": 0.7,
+      "rangePx": 12,
+      "knockbackPx": 26
+    },
+    "sprite": "SHIELDER",
+    "reflectPct": 0.6,
+    "evolved": true,
+    "paletteOverride": {
+      "primary": "#d8dde6",
+      "secondary": "#6a7486",
+      "accent": "#ffcf4a"
+    }
+  },
+  {
+    "id": "ic_minelayer",
+    "name": "연쇄 지뢰 공병",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "고속 지뢰 + 불길",
+    "description": "지뢰 공병 진화. 지뢰를 빠르게 깔고 폭발 자리에 불길이 남는다.",
+    "hp": 55,
+    "shield": 0,
+    "moveSpeed": 88,
+    "radius": 5,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "MINE",
+      "damage": 30,
+      "cooldownSec": 0.9,
+      "rangePx": 0,
+      "splashRadiusPx": 34,
+      "burnDps": 10,
+      "burnSec": 2
+    },
+    "sprite": "SAPPER",
+    "evolved": true,
+    "paletteOverride": {
+      "primary": "#d8dde6",
+      "secondary": "#6a7486",
+      "accent": "#ffcf4a"
+    }
+  },
+  {
+    "id": "ic_supply_drone",
+    "name": "보급 드론",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "수리 + 결원 자동 증원",
+    "description": "수리 드론 진화. 수리량 증가, 14초마다 결원이 있는 분대에 1명 증원.",
+    "hp": 45,
+    "shield": 0,
+    "moveSpeed": 92,
+    "radius": 4,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "HEAL",
+      "damage": 12,
+      "cooldownSec": 1.0,
+      "rangePx": 110
+    },
+    "sprite": "DRONE",
+    "reinforceIntervalSec": 14,
+    "evolved": true,
+    "paletteOverride": {
+      "primary": "#d8dde6",
+      "secondary": "#6a7486",
+      "accent": "#ffcf4a"
+    }
+  },
+  {
+    "id": "ic_stormcoil",
+    "name": "폭풍 포대",
+    "faction": "IRONCLAD",
+    "role": "BACK",
+    "summary": "6연쇄 번개",
+    "description": "테슬라 포탑병 진화. 번개가 6회 연쇄한다.",
+    "hp": 65,
+    "shield": 0,
+    "moveSpeed": 76,
+    "radius": 6,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "CHAIN",
+      "damage": 14,
+      "cooldownSec": 0.9,
+      "rangePx": 120,
+      "chainJumps": 6,
+      "chainRadiusPx": 60
+    },
+    "sprite": "TESLA",
+    "evolved": true,
+    "paletteOverride": {
+      "primary": "#d8dde6",
+      "secondary": "#6a7486",
+      "accent": "#ffcf4a"
+    }
+  },
+  {
+    "id": "hv_clawling",
+    "name": "갈퀴충",
+    "faction": "HIVE",
+    "role": "FRONT",
     "description": "가까운 적에게 달려들어 할퀴는 빠른 근접 개체.",
-    "hp": 38, "shield": 0, "moveSpeed": 105, "radius": 5,
-    "attack": { "targeting": "AUTO", "style": "MELEE", "damage": 8, "cooldownSec": 0.45, "rangePx": 10 },
-    "sprite": "CLAW"
+    "hp": 38,
+    "shield": 0,
+    "moveSpeed": 105,
+    "radius": 5,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "MELEE",
+      "damage": 8,
+      "cooldownSec": 0.45,
+      "rangePx": 10
+    },
+    "sprite": "CLAW",
+    "summary": "가까운 적에게 달려드는 근접 무리"
   },
   {
-    "id": "hv_spitter", "name": "가시 투척충", "faction": "HIVE", "role": "BACK",
+    "id": "hv_spitter",
+    "name": "가시 투척충",
+    "faction": "HIVE",
+    "role": "BACK",
     "description": "가장 가까운 적에게 가시를 날린다. 가시는 1회 관통.",
-    "hp": 34, "shield": 0, "moveSpeed": 85, "radius": 5,
-    "attack": { "targeting": "AUTO", "style": "PIERCE", "damage": 7, "cooldownSec": 0.7, "rangePx": 120, "projectileSpeed": 250, "pierce": 1 },
-    "sprite": "SPITTER"
+    "hp": 34,
+    "shield": 0,
+    "moveSpeed": 85,
+    "radius": 5,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "PIERCE",
+      "damage": 7,
+      "cooldownSec": 0.7,
+      "rangePx": 120,
+      "projectileSpeed": 250,
+      "pierce": 1
+    },
+    "sprite": "SPITTER",
+    "summary": "가시를 날려 1회 관통"
   },
   {
-    "id": "hv_spewer", "name": "산성 분사체", "faction": "HIVE", "role": "FRONT",
+    "id": "hv_spewer",
+    "name": "산성 분사체",
+    "faction": "HIVE",
+    "role": "FRONT",
     "description": "지휘관이 바라보는 방향으로 산성액을 넓게 분사한다.",
-    "hp": 60, "shield": 0, "moveSpeed": 80, "radius": 6,
-    "attack": { "targeting": "FACING", "style": "CONE", "damage": 7, "cooldownSec": 0.5, "rangePx": 58, "coneHalfAngleDeg": 40 },
-    "sprite": "SPEWER"
+    "hp": 60,
+    "shield": 0,
+    "moveSpeed": 80,
+    "radius": 6,
+    "attack": {
+      "targeting": "FACING",
+      "style": "CONE",
+      "damage": 7,
+      "cooldownSec": 0.5,
+      "rangePx": 58,
+      "coneHalfAngleDeg": 40
+    },
+    "sprite": "SPEWER",
+    "summary": "지휘관 방향으로 산성 분사"
   },
   {
-    "id": "hv_beetle", "name": "껍질 갑충", "faction": "HIVE", "role": "FRONT",
+    "id": "hv_beetle",
+    "name": "껍질 갑충",
+    "faction": "HIVE",
+    "role": "FRONT",
     "description": "두꺼운 껍질로 적을 막아서는 탱커. 주변 적을 들이받는다.",
-    "hp": 170, "shield": 0, "moveSpeed": 72, "radius": 8,
-    "attack": { "targeting": "AUTO", "style": "MELEE", "damage": 12, "cooldownSec": 1.0, "rangePx": 12 },
-    "sprite": "BEETLE"
+    "hp": 170,
+    "shield": 0,
+    "moveSpeed": 72,
+    "radius": 8,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "MELEE",
+      "damage": 12,
+      "cooldownSec": 1.0,
+      "rangePx": 12
+    },
+    "sprite": "BEETLE",
+    "summary": "단단한 탱커, 들이받기"
   },
-
   {
-    "id": "lm_warden", "name": "수호 기사", "faction": "LUMEN", "role": "FRONT",
+    "id": "lm_warden",
+    "name": "수호 기사",
+    "faction": "LUMEN",
+    "role": "FRONT",
     "description": "광휘 검으로 가까운 적을 베는 근접 기사.",
-    "hp": 60, "shield": 40, "moveSpeed": 84, "radius": 6,
-    "attack": { "targeting": "AUTO", "style": "MELEE", "damage": 13, "cooldownSec": 0.7, "rangePx": 12 },
-    "sprite": "KNIGHT"
+    "hp": 60,
+    "shield": 40,
+    "moveSpeed": 84,
+    "radius": 6,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "MELEE",
+      "damage": 13,
+      "cooldownSec": 0.7,
+      "rangePx": 12
+    },
+    "sprite": "KNIGHT",
+    "summary": "광휘 검 근접 기사"
   },
   {
-    "id": "lm_prism", "name": "프리즘 포대", "faction": "LUMEN", "role": "BACK",
+    "id": "lm_prism",
+    "name": "프리즘 포대",
+    "faction": "LUMEN",
+    "role": "BACK",
     "description": "가장 가까운 적에게 광자탄을 쏘는 떠다니는 결정 포대.",
-    "hp": 30, "shield": 40, "moveSpeed": 80, "radius": 5,
-    "attack": { "targeting": "AUTO", "style": "PROJECTILE", "damage": 10, "cooldownSec": 0.8, "rangePx": 140, "projectileSpeed": 320 },
-    "sprite": "PRISM"
+    "hp": 30,
+    "shield": 40,
+    "moveSpeed": 80,
+    "radius": 5,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "PROJECTILE",
+      "damage": 10,
+      "cooldownSec": 0.8,
+      "rangePx": 140,
+      "projectileSpeed": 320
+    },
+    "sprite": "PRISM",
+    "summary": "광자탄 자동 사격 포대"
   },
   {
-    "id": "lm_lancer", "name": "광선 창병", "faction": "LUMEN", "role": "BACK",
+    "id": "lm_lancer",
+    "name": "광선 창병",
+    "faction": "LUMEN",
+    "role": "BACK",
     "description": "지휘관이 바라보는 방향으로 적을 꿰뚫는 광선 창을 던진다.",
-    "hp": 36, "shield": 36, "moveSpeed": 80, "radius": 5,
-    "attack": { "targeting": "FACING", "style": "PIERCE", "damage": 16, "cooldownSec": 1.0, "rangePx": 180, "projectileSpeed": 360, "pierce": 5, "coneHalfAngleDeg": 25 },
-    "sprite": "LANCER"
+    "hp": 36,
+    "shield": 36,
+    "moveSpeed": 80,
+    "radius": 5,
+    "attack": {
+      "targeting": "FACING",
+      "style": "PIERCE",
+      "damage": 16,
+      "cooldownSec": 1.0,
+      "rangePx": 180,
+      "projectileSpeed": 360,
+      "pierce": 5,
+      "coneHalfAngleDeg": 25
+    },
+    "sprite": "LANCER",
+    "summary": "지휘관 방향 관통 광선 창"
   },
   {
-    "id": "lm_orb", "name": "공명 구체", "faction": "LUMEN", "role": "FRONT",
+    "id": "lm_orb",
+    "name": "공명 구체",
+    "faction": "LUMEN",
+    "role": "FRONT",
     "description": "주변에 주기적으로 공명 파동을 방출해 둘러싼 적 모두에게 피해를 준다.",
-    "hp": 50, "shield": 60, "moveSpeed": 80, "radius": 6,
-    "attack": { "targeting": "AUTO", "style": "PULSE", "damage": 9, "cooldownSec": 1.3, "rangePx": 34 },
-    "sprite": "ORB"
+    "hp": 50,
+    "shield": 60,
+    "moveSpeed": 80,
+    "radius": 6,
+    "attack": {
+      "targeting": "AUTO",
+      "style": "PULSE",
+      "damage": 9,
+      "cooldownSec": 1.3,
+      "rangePx": 34
+    },
+    "sprite": "ORB",
+    "summary": "주변 적 전체에 파동"
   }
 ]
