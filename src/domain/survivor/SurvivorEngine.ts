@@ -575,19 +575,29 @@ export class SurvivorEngine {
     const from = s.def.id;
     const into = getSquadUnitDef(evo.intoId);
     s.def = into;
+    // 진화 대가: 분대는 Lv1(1명)로 돌아가고, 레벨업으로 다시 5명까지 모은다.
+    // 가장 체력이 많이 남은 대원 1명이 진화 병종으로 남는다.
+    s.level = 1;
+    s.reinforceTimer = 0;
+    const members = this.squad.filter((m) => m.squadKey === s.key);
+    members.sort((m1, m2) => m2.hp / m2.maxHp - m1.hp / m1.maxHp);
+    const keep = members.slice(0, squadHeadcount(1));
+    for (const m of members.slice(squadHeadcount(1))) {
+      m.alive = false;
+      m.hp = 0;
+    }
     const hpMult = 1 + 0.15 * this.moduleLevel('ARMOR');
-    for (const m of this.squad) {
-      if (m.squadKey !== s.key) {
-        continue;
-      }
-      const ratio = m.hp / m.maxHp;
+    for (const m of keep) {
       m.def = into;
       m.radius = into.radius;
       m.baseMaxHp = into.hp;
       m.maxHp = into.hp * hpMult;
-      m.hp = Math.max(1, m.maxHp * Math.max(ratio, 0.6));
+      // 진화한 대원은 완전히 회복한 상태로 시작한다
+      m.hp = m.maxHp;
+      m.channelSec = 0;
       this.addEffect('EVOLVE', m.x, m.y, 0, 16, 0, 0.8, '#ffcf4a');
     }
+    this.cleanupSquad();
     this.reassignSlots();
     return from;
   }
@@ -1698,23 +1708,42 @@ export class SurvivorEngine {
     let w = 0;
     for (let i = 0; i < this.projectiles.length; i += 1) {
       const p = this.projectiles[i];
+      const x0 = p.x;
+      const y0 = p.y;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.lifeSec -= dt;
 
-      const cand = this.hash.query(p.x, p.y, p.radius + 28, this.scratch);
-      for (let k = 0; k < cand.length && p.alive; k += 1) {
+      // 연속 충돌 판정: 이번 틱에 지나간 선분 전체를 검사한다 (고속탄이 작은 적을 건너뛰지 않도록).
+      // 관통탄은 선분 위에서 먼저 닿는 적부터 맞힌다.
+      const segX = p.x - x0;
+      const segY = p.y - y0;
+      const segLen2 = segX * segX + segY * segY;
+      const cand = this.hash.query((x0 + p.x) / 2, (y0 + p.y) / 2, Math.sqrt(segLen2) / 2 + p.radius + 28, this.scratch);
+      const hits: Array<{ e: EnemyState; t: number }> = [];
+      for (let k = 0; k < cand.length; k += 1) {
         const e = this.enemies[cand[k]];
         if (!e || !e.alive || p.hitIds.includes(e.id)) {
           continue;
         }
-        const dx = e.x - p.x;
-        const dy = e.y - p.y;
+        const t = segLen2 > 0 ? Math.max(0, Math.min(1, ((e.x - x0) * segX + (e.y - y0) * segY) / segLen2)) : 1;
+        const dx = e.x - (x0 + segX * t);
+        const dy = e.y - (y0 + segY * t);
         const r = e.radius + p.radius;
-        if (dx * dx + dy * dy > r * r) {
+        if (dx * dx + dy * dy <= r * r) {
+          hits.push({ e, t });
+        }
+      }
+      hits.sort((h1, h2) => h1.t - h2.t);
+      for (let k = 0; k < hits.length && p.alive; k += 1) {
+        const e = hits[k].e;
+        if (!e.alive) {
           continue;
         }
         if (p.splashRadiusPx > 0) {
+          // 폭발탄은 닿은 지점에서 터진다
+          p.x = x0 + segX * hits[k].t;
+          p.y = y0 + segY * hits[k].t;
           this.explode(p.x, p.y, p.splashRadiusPx, p.damage, 0, 0, p.evolved);
           p.alive = false;
           break;
@@ -1722,13 +1751,15 @@ export class SurvivorEngine {
         if (p.marks) {
           e.markedSec = MARK_DURATION_SEC;
         }
-        this.damageEnemy(e, p.damage, p.bonusVsElite, p.executePct, p.px, p.py);
+        const hitX = x0 + segX * hits[k].t;
+        const hitY = y0 + segY * hits[k].t;
+        this.damageEnemy(e, p.damage, p.bonusVsElite, p.executePct, x0, y0);
         const isHeavy = p.visual === 'SNIPER' || p.visual === 'EXECUTIONER';
         if (isHeavy || this.effects.length < MAX_EFFECTS - 40) {
           this.addEffect(
             'HIT_SPARK',
-            p.x,
-            p.y,
+            hitX,
+            hitY,
             Math.atan2(p.vy, p.vx),
             isHeavy ? 10 : 6,
             0,
@@ -1743,6 +1774,8 @@ export class SurvivorEngine {
         p.pierceLeft -= 1;
         if (p.pierceLeft < 0) {
           p.alive = false;
+          p.x = hitX;
+          p.y = hitY;
         }
       }
 

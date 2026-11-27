@@ -82,7 +82,7 @@ export function describeOffer(offer: LevelUpOffer, pool: readonly string[] = [])
         title: u.name,
         tagLine: unitTagLine(u),
         body: `정원 ${squadHeadcount(offer.nextLevel)}명 (+1명 합류), 피해량 +12%.`,
-        hint: offer.nextLevel === MAX_SQUAD_LEVEL ? `${evolutionHint(u) ?? ''} (보급 상자로 진화)` : evolutionHint(u) ?? undefined,
+        hint: offer.nextLevel === MAX_SQUAD_LEVEL ? `${evolutionHint(u) ?? ''} (보급 상자로 진화 → Lv1부터 다시)` : evolutionHint(u) ?? undefined,
         unitId: u.id,
       };
     }
