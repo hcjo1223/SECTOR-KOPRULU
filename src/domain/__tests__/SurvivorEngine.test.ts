@@ -290,5 +290,102 @@ describe('SurvivorEngine', () => {
     // 갈퀴충 웨이브는 1:30부터라 그 전에 나타난 갈퀴충은 소환된 하수인이다
     expect(e.elapsedSec).toBeLessThan(90);
   });
+
+  it('emits dedicated combat effects: BASH, RAIL_TRAIL, HIT_SPARK, DEFLECT, REFLECT, EXECUTE and evolved PLASMA zones', () => {
+    const collectEffects = (eng: SurvivorEngine, ticks: number): Set<string> => {
+      const seen = new Set<string>();
+      for (let i = 0; i < ticks; i += 1) {
+        eng.step(1);
+        for (const f of eng.effects) {
+          seen.add(f.kind + (f.evolved ? ':EVO' : ''));
+          seen.add(f.kind);
+        }
+      }
+      return seen;
+    };
+
+    // 1. 방패병(ic_shield) 근접 공격 시 SLASH 대신 BASH 이펙트가 생성된다
+    const e1 = withStarter(new SurvivorEngine('IRONCLAD', 'ic_vanguard', 41), 'ic_shield');
+    e1.step(60);
+    e1.commander.cooldown = 1e9;
+    const shielder = e1.squad[0];
+    shielder.cooldown = 0;
+    e1.spawnEnemyAt('brute', shielder.x + 12, shielder.y);
+    const seen1 = collectEffects(e1, 20);
+    expect(seen1.has('BASH')).toBe(true);
+
+    // 2. 처형자(ic_executioner) 사격 시 EXECUTIONER 탄환과 RAIL_TRAIL이 생성되고, 빈사(<=15%) 적 타격 시 EXECUTE 이펙트가 발생한다
+    const e2 = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 42), 'ic_sniper');
+    for (let lv = 2; lv <= 5; lv += 1) e2.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_sniper', nextLevel: lv });
+    e2.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: 'SCOPE' });
+    e2.grantChest();
+    e2.confirmChest();
+    e2.step(60);
+    e2.commander.cooldown = 1e9;
+    for (const m of e2.squad) m.cooldown = 1e9;
+    const exec = e2.squad[0];
+    exec.cooldown = 0;
+    const dying = e2.spawnEnemyAt('brute', exec.x + 40, exec.y);
+    dying.maxHp = 10000;
+    dying.hp = 1200; // 12% HP -> 사격 피해 후 15% 이하이므로 즉사(EXECUTE) 발동
+    const seen2 = collectEffects(e2, 25);
+    expect(seen2.has('RAIL_TRAIL:EVO')).toBe(true);
+    expect(seen2.has('EXECUTE')).toBe(true);
+
+    // 3. 갑각충(shelled) 정면 피격 시 DEFLECT 이펙트가 발생한다
+    const e3 = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 43), 'ic_rifle');
+    e3.step(60);
+    e3.commander.cooldown = 1e9;
+    const rifle = e3.squad[0];
+    rifle.cooldown = 0;
+    const shelled = e3.spawnEnemyAt('shelled', rifle.x + 45, rifle.y);
+    shelled.facingAngle = Math.PI; // 아군(왼쪽)을 정면으로 바라봄
+    const seen3 = collectEffects(e3, 30);
+    expect(seen3.has('DEFLECT')).toBe(true);
+    expect(seen3.has('HIT_SPARK')).toBe(true);
+
+    // 4. 성벽 분대(ic_bulwark) 피격 반사 시 REFLECT 이펙트가 발생한다
+    const e4 = withStarter(new SurvivorEngine('IRONCLAD', 'ic_vanguard', 44), 'ic_shield');
+    for (let lv = 2; lv <= 5; lv += 1) e4.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_shield', nextLevel: lv });
+    e4.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: 'ARMOR' });
+    e4.grantChest();
+    e4.confirmChest();
+    e4.step(60);
+    e4.commander.cooldown = 1e9;
+    for (const m of e4.squad) m.cooldown = 1e9;
+    const bulwark = e4.squad[0];
+    e4.spawnEnemyAt('mite', bulwark.x + 4, bulwark.y);
+    const seen4 = collectEffects(e4, 25);
+    expect(seen4.has('REFLECT')).toBe(true);
+
+    // 5. 소각 분대(ic_incinerator) 공격 시 PLASMA 화염 장판이 생성된다
+    const e5 = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 45), 'ic_flamer');
+    for (let lv = 2; lv <= 5; lv += 1) e5.applyOfferDirect({ kind: 'SQUAD_LEVEL', unitId: 'ic_flamer', nextLevel: lv });
+    e5.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: 'AREA' });
+    e5.grantChest();
+    e5.confirmChest();
+    e5.step(60);
+    e5.commander.cooldown = 1e9;
+    const incin = e5.squad[0];
+    incin.cooldown = 0;
+    e5.spawnEnemyAt('brute', incin.x + 25, incin.y);
+    collectEffects(e5, 20);
+    expect(e5.zones.some((z) => z.kind === 'PLASMA')).toBe(true);
+  });
+
+  it('triggers attackFlashSec and assigns EnemyShotVisual when ranged/summoner enemies fire', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 46);
+    e.commander.cooldown = 1e9;
+    const spiker = e.spawnEnemyAt('hive_spiker', e.commander.x + 90, e.commander.y);
+    const prism = e.spawnEnemyAt('lumen_prism', e.commander.x + 95, e.commander.y + 20);
+    spiker.attackTimer = 0.01;
+    prism.attackTimer = 0.01;
+    e.step(2);
+    expect(spiker.attackFlashSec).toBeGreaterThan(0);
+    expect(prism.attackFlashSec).toBeGreaterThan(0);
+    const visuals = new Set(e.enemyShots.map((s) => s.visual));
+    expect(visuals.has('SPIKE')).toBe(true);
+    expect(visuals.has('PRISM')).toBe(true);
+  });
 });
 
