@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sprites:export": "vite-node scripts/export-sprite-sheets.ts"
   },
   "dependencies": {
     "pixi.js": "^8.9.2",

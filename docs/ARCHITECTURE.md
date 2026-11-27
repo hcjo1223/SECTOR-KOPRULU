@@ -12,7 +12,7 @@ src/
 ├── core/
 │   ├── SurvivorApp.ts        # Pixi 앱 수명주기, 틱 누적 루프, 정수 배율 반응형 뷰, HUD 동기화(10Hz)
 │   ├── SurvivorRenderer.ts   # 지휘관 추종 카메라, 틱 보간, id 기반 스프라이트 풀, 이펙트 Graphics
-│   ├── SurvivorSprites.ts    # 32x32 8방향 클러스터 스프라이트 → 팔레트 재채색 RGBA
+│   ├── SurvivorSprites.ts    # 32x32 8방향 스프라이트: 16색 양자화 · IDLE2/WALK4/ATTACK4 · 몸/이펙트 레이어 분리 · 시트 패킹
 │   └── SurvivorInput.ts      # 키보드 + 가상 조이스틱 통합 이동 벡터
 ├── store/useSurvivorStore.ts # 화면 전환, 엔진 인스턴스, HUD 스냅샷, 레벨업 선택
 ├── ui/                       # SurvivorTitle, SurvivorHUD, LevelUpModal, ResultModal, VirtualJoystick

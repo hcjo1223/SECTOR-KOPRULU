@@ -1,5 +1,5 @@
 import { CanvasSource, Container, Graphics, Sprite, Texture, TilingSprite } from 'pixi.js';
-import type { SurvivorEngine } from '../domain/survivor/SurvivorEngine';
+import { ATTACK_RELEASE_SEC, type SurvivorEngine } from '../domain/survivor/SurvivorEngine';
 import type { EffectState, FactionPalette, SpriteArchetype } from '../domain/survivor/types';
 import {
   angleToDir8,
@@ -7,7 +7,9 @@ import {
   renderGemPixels,
   renderGroundTilePixels,
   renderSlimeTilePixels,
+  renderSpriteFxPixels,
   renderSpritePixels,
+  SPRITE_FRAME_COUNT,
   type SpriteAnim,
   type SpriteDir8,
 } from './SurvivorSprites';
@@ -39,8 +41,7 @@ export function getSpriteTexture(
   dir: SpriteDir8 = 'S',
   anim: SpriteAnim = 'IDLE'
 ): Texture {
-  const maxFrames = anim === 'WALK' ? 4 : 2;
-  const f = Math.abs(Math.round(frame)) % maxFrames;
+  const f = Math.abs(Math.round(frame)) % SPRITE_FRAME_COUNT[anim];
   const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${dir}|${anim}|${f}`;
   const hit = textureCache.get(key);
   if (hit) {
@@ -55,6 +56,36 @@ export function getSpriteTexture(
   return tex;
 }
 
+const fxTextureCache = new Map<string, Texture | null>();
+
+/** 같은 프레임의 이펙트 레이어 텍스처 (총구 섬광·번개 등). 없으면 null */
+export function getSpriteFxTexture(
+  archetype: SpriteArchetype,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): Texture | null {
+  const f = Math.abs(Math.round(frame)) % SPRITE_FRAME_COUNT[anim];
+  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${dir}|${anim}|${f}`;
+  if (fxTextureCache.has(key)) {
+    return fxTextureCache.get(key) ?? null;
+  }
+  const px = renderSpriteFxPixels(archetype, palette, f, dir, anim);
+  const tex = px ? new Texture({ source: new CanvasSource({ resource: pixelsToCanvas(px), scaleMode: 'nearest' }) }) : null;
+  fxTextureCache.set(key, tex);
+  return tex;
+}
+
+/** 공격 상태 프레임: 예비동작 중 0, 발동 후 남은 시간에 따라 1(발사)·2(반동)·3(복귀) */
+export function attackAnimFrame(windupSec: number, attackFlashSec: number): number {
+  if (windupSec > 0) {
+    return 0;
+  }
+  const t = 1 - attackFlashSec / ATTACK_RELEASE_SEC;
+  return t < 1 / 3 ? 1 : t < 2 / 3 ? 2 : 3;
+}
+
 const dataUrlCache = new Map<string, string>();
 
 export function getSpriteDataUrl(
@@ -64,14 +95,23 @@ export function getSpriteDataUrl(
   dir: SpriteDir8 = 'S',
   anim: SpriteAnim = 'IDLE'
 ): string {
-  const maxFrames = anim === 'WALK' ? 4 : 2;
-  const f = Math.abs(Math.round(frame)) % maxFrames;
+  const f = Math.abs(Math.round(frame)) % SPRITE_FRAME_COUNT[anim];
   const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${dir}|${anim}|${f}`;
   const hit = dataUrlCache.get(key);
   if (hit) {
     return hit;
   }
-  const url = pixelsToCanvas(renderSpritePixels(archetype, palette, f, dir, anim)).toDataURL();
+  // UI 미리보기는 몸 + 이펙트를 합성해 보여준다
+  const body = renderSpritePixels(archetype, palette, f, dir, anim);
+  const fx = renderSpriteFxPixels(archetype, palette, f, dir, anim);
+  if (fx) {
+    for (let i = 0; i < body.data.length; i += 4) {
+      if (fx.data[i + 3] > 0) {
+        body.data.set(fx.data.subarray(i, i + 4), i);
+      }
+    }
+  }
+  const url = pixelsToCanvas(body).toDataURL();
   dataUrlCache.set(key, url);
   return url;
 }
@@ -473,12 +513,10 @@ export class SurvivorRenderer {
     const idleTick = Math.floor(this.timeSec * 3);
 
     const cmdDir = angleToDir8(c.facingAngle);
-    const cmdAnim: SpriteAnim = c.attackFlashSec > 0 ? 'ATTACK' : c.moving ? 'WALK' : 'IDLE';
+    const cmdAnim: SpriteAnim = c.windupSec > 0 || c.attackFlashSec > 0 ? 'ATTACK' : c.moving ? 'WALK' : 'IDLE';
     const cmdFrame =
       cmdAnim === 'ATTACK'
-        ? c.attackFlashSec > 0.11
-          ? 0
-          : 1
+        ? attackAnimFrame(c.windupSec, c.attackFlashSec)
         : cmdAnim === 'WALK'
           ? walkTick % 4
           : idleTick % 2;
@@ -490,6 +528,7 @@ export class SurvivorRenderer {
       1,
       c.sinceHitSec < 0.12 ? 0xff7070 : 0xffffff
     );
+    this.placeFx(c.id, getSpriteFxTexture(c.def.sprite, engine.paletteFor(c.def), cmdFrame, cmdDir, cmdAnim), camX, camY, 1);
 
     for (const m of engine.squad) {
       const mx = lerp(m.px, m.x);
@@ -505,12 +544,10 @@ export class SurvivorRenderer {
         gf.rect(imx + 9, imy - 16, 1, 3).fill({ color: accentCol, alpha: 0.85 });
       }
       const mDir = angleToDir8(m.facingAngle);
-      const mAnim: SpriteAnim = m.attackFlashSec > 0 ? 'ATTACK' : m.moving ? 'WALK' : 'IDLE';
+      const mAnim: SpriteAnim = m.windupSec > 0 || m.attackFlashSec > 0 ? 'ATTACK' : m.moving ? 'WALK' : 'IDLE';
       const mFrame =
         mAnim === 'ATTACK'
-          ? m.attackFlashSec > 0.11
-            ? 0
-            : 1
+          ? attackAnimFrame(m.windupSec, m.attackFlashSec)
           : mAnim === 'WALK'
             ? (walkTick + m.id) % 4
             : (idleTick + m.id) % 2;
@@ -523,6 +560,7 @@ export class SurvivorRenderer {
         1,
         tint
       );
+      this.placeFx(m.id, getSpriteFxTexture(m.def.sprite, engine.paletteFor(m.def), mFrame, mDir, mAnim), mx, my, 1);
     }
 
     for (const e of engine.enemies) {
@@ -543,13 +581,8 @@ export class SurvivorRenderer {
       }
 
       const eDir = angleToDir8(e.facingAngle);
-      const eAnim: SpriteAnim = e.attackFlashSec > 0 ? 'ATTACK' : 'WALK';
-      const eFrame =
-        eAnim === 'ATTACK'
-          ? e.attackFlashSec > 0.11
-            ? 0
-            : 1
-          : (walkTick + e.id) % 4;
+      const eAnim: SpriteAnim = e.windupSec > 0 || e.attackFlashSec > 0 ? 'ATTACK' : 'WALK';
+      const eFrame = eAnim === 'ATTACK' ? attackAnimFrame(e.windupSec, e.attackFlashSec) : (walkTick + e.id) % 4;
       const tint = e.hitFlashSec > 0 ? 0xff9090 : e.isElite ? 0xffe6a8 : 0xffffff;
       this.placeSprite(
         e.id,
@@ -559,6 +592,7 @@ export class SurvivorRenderer {
         e.scale,
         tint
       );
+      this.placeFx(e.id, getSpriteFxTexture(e.def.sprite, e.def.palette, eFrame, eDir, eAnim), ex, ey, e.scale);
     }
 
     for (const [id, p] of this.sprites) {
@@ -961,5 +995,18 @@ export class SurvivorRenderer {
     s.scale.set(scale, scale);
     s.tint = tint;
     s.zIndex = Math.round(y);
+  }
+
+  /** 이펙트 레이어: 몸 스프라이트와 같은 위치·피벗에 덧그린다 (피격 틴트 없음) */
+  private placeFx(id: number, tex: Texture | null, x: number, y: number, scale: number): void {
+    if (!tex) {
+      return;
+    }
+    const fxId = -(id + 1);
+    this.placeSprite(fxId, tex, x, y, scale, 0xffffff);
+    const p = this.sprites.get(fxId);
+    if (p) {
+      p.sprite.zIndex = Math.round(y) + 1;
+    }
   }
 }

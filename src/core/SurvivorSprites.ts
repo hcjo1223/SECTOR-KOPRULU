@@ -247,7 +247,24 @@ function dir8Vector(dir: SpriteDir8): { dx: number; dy: number } {
 
 class SculptCanvas32 {
   public readonly size = SPRITE_SIZE;
-  public readonly data = new Uint8ClampedArray(SPRITE_SIZE * SPRITE_SIZE * 4);
+  /** 유닛 몸 레이어 (스프라이트 시트에 들어가는 픽셀) */
+  public readonly body = new Uint8ClampedArray(SPRITE_SIZE * SPRITE_SIZE * 4);
+  /** 이펙트 레이어 (총구 섬광·번개·흙먼지 등): 몸 프레임과 분리해 크기·중심점을 고정한다 */
+  public readonly fx = new Uint8ClampedArray(SPRITE_SIZE * SPRITE_SIZE * 4);
+  private target: Uint8ClampedArray = this.body;
+
+  public get data(): Uint8ClampedArray {
+    return this.target;
+  }
+
+  /** 이후 그리기를 이펙트 레이어로 보낸다 */
+  public fxBegin(): void {
+    this.target = this.fx;
+  }
+
+  public fxEnd(): void {
+    this.target = this.body;
+  }
 
   public inBounds(x: number, y: number): boolean {
     return x >= 0 && x < this.size && y >= 0 && y < this.size;
@@ -257,7 +274,7 @@ class SculptCanvas32 {
     if (!this.inBounds(x, y)) {
       return false;
     }
-    return this.data[(y * this.size + x) * 4 + 3] > 0;
+    return this.body[(Math.round(y) * this.size + Math.round(x)) * 4 + 3] > 0;
   }
 
   public px(x: number, y: number, c: Rgb): void {
@@ -617,6 +634,8 @@ class SculptCanvas32 {
           : [235, 119, 36];
     };
 
+    const prev = this.target;
+    this.target = this.fx;
     const targetAng = Math.atan2(dirY, dirX);
     const refAng = Math.PI / 4;
     const dAng = targetAng - refAng;
@@ -638,6 +657,7 @@ class SculptCanvas32 {
         }
       }
     }
+    this.target = prev;
   }
 
   public finalizeOutline(): void {
@@ -732,10 +752,31 @@ function buildRef8DirColorLut(
  * IMG_2485.png (8방향 IDLE 시트) 및 IMG_2486.png (8방향 ATTACK 사격 시트)에서
  * 해당 방향(S=0, SE=1, E=2, NE=3, N=4, NW=5, W=6, SW=7)의 32x32 슬라이스를 스탬핑한다.
  */
+/** 원본 ATTACK 시트의 방향별 총구 영역 [x0, y0, x1, y1]: 이 안의 불꽃색 픽셀 = 총구 화염 (이펙트 레이어로 분리) */
+const REF_ATK_MUZZLE_BOX: Readonly<Record<SpriteDir8, readonly [number, number, number, number] | null>> = {
+  S: [22, 21, 31, 31],
+  SE: [26, 19, 31, 31],
+  E: [25, 8, 31, 19],
+  NE: [24, 0, 31, 6],
+  N: [16, 0, 26, 3],
+  NW: null,
+  W: [0, 7, 5, 18],
+  SW: [0, 19, 5, 31],
+};
+
+function isRefFlameColor(idx: number): boolean {
+  const [r, g, b] = REF_8DIR_PALETTE[idx];
+  return (r >= 150 && r > g && g >= b && r - b >= 60) || (r > 240 && g > 240 && b > 200);
+}
+
+/**
+ * IMG_2485 / IMG_2486 8방향 원본 시트를 진영 팔레트로 찍는다 (정지 포즈).
+ * 걷기·숨쉬기·반동 모션은 공용 애니메이터(planFrame)가 모든 아키타입에 동일하게 적용한다.
+ */
 function stamp8DirSheet(
   c: SculptCanvas32,
   palette: FactionPalette,
-  frame: number,
+  _frame: number,
   dir: SpriteDir8,
   anim: SpriteAnim,
   yOffset: number = 0,
@@ -747,8 +788,6 @@ function stamp8DirSheet(
   const useAtk = anim === 'ATTACK' && useAttackRifleSheet;
   const sheet = useAtk ? REF_ATK_8DIR_SHEET : REF_IDLE_8DIR_SHEET;
   const lut = buildRef8DirColorLut(palette, customEye);
-  const walkCycle = anim === 'WALK' ? ((frame % 4) + 4) % 4 : frame % 2;
-  const isSide = dir === 'E' || dir === 'W';
 
   for (let y = 0; y < 32; y += 1) {
     const rowBase = y * 256 + sliceX;
@@ -757,58 +796,14 @@ function stamp8DirSheet(
       if (palIdx === 0) {
         continue;
       }
-      const rgb = lut[palIdx];
-      // ATTACK 프레임 1(반동 프레임)에서는 외곽 주황 화염 끝단을 점멸시킨다
-      if (useAtk && frame % 2 === 1 && rgb[0] > 225 && rgb[1] < 140 && (x + y) % 2 === 0) {
+      const box = useAtk ? REF_ATK_MUZZLE_BOX[dir] : null;
+      if (box && x >= box[0] && x <= box[2] && y >= box[1] && y <= box[3] && isRefFlameColor(palIdx)) {
+        c.fxBegin();
+        c.px(x, y + yOffset, lut[palIdx]);
+        c.fxEnd();
         continue;
       }
-
-      let dx = 0;
-      let dy = yOffset;
-
-      if (anim === 'WALK') {
-        const isLeftHalf = x < 16;
-        const isLeg = y >= 22;
-        const isArm = y >= 14 && y < 22 && (x <= 9 || x >= 22);
-        if (isSide) {
-          // 측면(E/W) 4프레임 가위걸음 보행
-          const sideStride = walkCycle === 0 ? 1 : walkCycle === 2 ? -1 : 0;
-          if (isLeg) {
-            dx += (y >= 26 ? 1 : -1) * sideStride;
-            if (walkCycle % 2 === 0 && ((x < 16) === (walkCycle === 0))) {
-              dy -= 1;
-            }
-          } else if (walkCycle % 2 === 1) {
-            dy -= 1;
-          }
-        } else {
-          // 정면/반측면/후면 4프레임 좌우 다리 교차 보행
-          if (walkCycle === 0) {
-            if (isLeg) dy += isLeftHalf ? -2 : 1;
-            else if (isArm) dy += isLeftHalf ? 1 : -1;
-          } else if (walkCycle === 1) {
-            if (y < 22) dy -= 1;
-          } else if (walkCycle === 2) {
-            if (isLeg) dy += isLeftHalf ? 1 : -2;
-            else if (isArm) dy += isLeftHalf ? -1 : 1;
-          } else if (isArm) {
-            dy -= 1;
-          }
-        }
-      } else if (anim === 'IDLE' && walkCycle === 1) {
-        if (y >= 5 && y <= 21) {
-          dy -= 1;
-        }
-      } else if (anim === 'ATTACK' && frame % 2 === 1) {
-        // 사격·공격 반동(Recoil): 상체가 조준 반대 방향으로 1px 밀림
-        const { dx: vx, dy: vy } = dir8Vector(dir);
-        if (y <= 21) {
-          dx -= Math.round(vx);
-          dy -= Math.round(vy * 0.6);
-        }
-      }
-
-      c.px(x + dx, y + dy, rgb);
+      c.px(x, y + yOffset, lut[palIdx]);
     }
   }
 }
@@ -1697,7 +1692,9 @@ function drawSniper32(
     c.px(bx + dx * 2 - 1, by + dy * 2 - 2, lens);
     c.stampMuzzleBlast(tx + dx * 2, ty + dy * 2, dx, dy, f, 'FIRE');
     if (f === 0) {
+      c.fxBegin();
       drawLine(c, tx + dx * 5, ty + dy * 5, tx + dx * 16, ty + dy * 16, [255, 244, 200]);
+      c.fxEnd();
     }
   } else {
     // 대기/이동: 대물 저격총을 사선으로 거치 (총구가 어깨 위로 솟음)
@@ -1760,9 +1757,11 @@ function drawShielder32(
     const hy = 19 + dy * 10;
     c.stampMuzzleBlast(hx, hy, dx, dy, f, 'CYAN');
     if (f === 0) {
+      c.fxBegin();
       for (let k = -2; k <= 2; k += 2) {
         c.px(hx - dy * k * 2, hy + dx * k * 2, sp.white);
       }
+      c.fxEnd();
     }
   }
 }
@@ -1822,7 +1821,8 @@ function drawSapper32(
   c.px(ax + (s < 0 ? -1 : 1), 1, led);
 
   if (anim === 'ATTACK') {
-    // 설치: 발치 앞에 지뢰를 박고 흙먼지가 튄다
+    // 설치: 발치 앞에 지뢰를 박고 흙먼지가 튄다 (이펙트 레이어)
+    c.fxBegin();
     const mx = 16 + dx * 9;
     const my = 27 + dy * 2;
     mine(mx, my, 4.2);
@@ -1833,6 +1833,7 @@ function drawSapper32(
     c.px(mx - 4, my - 4 - f, lighten(dust, 0.3));
     c.px(mx + 4, my - 4 - f, lighten(dust, 0.3));
     c.stampMuzzleBlast(16 + dx * 6, 22 + dy * 4, dx * 0.6, 1, f, 'FIRE');
+    c.fxEnd();
   } else if (!back) {
     // 손에 든 원반 지뢰
     const hx = s < 0 ? 5 : 26;
@@ -1884,15 +1885,19 @@ function drawTesla32(
     // 구체에서 조준 방향으로 연쇄 번개
     const tx = 16 + dx * 15;
     const ty = 16 + dy * 13;
+    c.fxBegin();
     drawBolt(c, cx, 4, tx, ty, frame + 1, glow, sp.white);
     drawBolt(c, wx, 20, tx, ty, frame + 4, glow, sp.white);
     c.partDome(tx, ty, 2.2, 2.2, orbRamp);
     c.px(tx, ty, sp.white);
+    c.fxEnd();
   } else if (f === 1) {
     // 대기 방전 스파크
+    c.fxBegin();
     c.px(cx - 4, 2, glow);
     c.px(cx + 4, 5, glow);
     c.px(cx + 3, 1, sp.white);
+    c.fxEnd();
   }
 }
 
@@ -1918,11 +1923,13 @@ function drawCharger32(
 
   // 돌진 예고: 뒤편 흙먼지
   if (anim === 'ATTACK') {
+    c.fxBegin();
     const dust: Rgb = [176, 150, 116];
     const bx = 15.5 - dx * 11;
     const by = 25 - dy * 4;
     c.partDome(bx, by, 2.6 + f, 1.8 + f * 0.5, makeRamp8(dust, darken(dust, 0.4), [240, 226, 200]));
     c.partDome(bx - dy * 4 - dx * 2, by + dx * 2, 1.6, 1.2, makeRamp8(dust, darken(dust, 0.4), [240, 226, 200]));
+    c.fxEnd();
   }
 
   bugLegPairs(c, 15.5, cy + 2, 3, 3.6, 5, 6, frame, anim, legRamp, sp.bone.t3, 1.5);
@@ -2006,8 +2013,10 @@ function drawSporer32(
   if (anim === 'ATTACK') {
     c.stampMuzzleBlast(15.5 + dx * 13, 22 + dy * 9, dx, dy, f, 'ACID');
   } else if (f === 1) {
+    c.fxBegin();
     c.px(sx + 2, sy - 8, sp.trim.t4);
     c.px(sx - 4, sy - 7, sp.trim.t3);
+    c.fxEnd();
   }
 }
 
@@ -2121,11 +2130,13 @@ function drawBomber32(
 
   if (arming) {
     // 자폭 예고 섬광 스파크
+    c.fxBegin();
     const r = 11 + f;
     for (let k = 0; k < 8; k += 1) {
       const a = (k / 8) * Math.PI * 2 + f * 0.4;
       c.px(15.5 + Math.cos(a) * r, 14 + Math.sin(a) * r, k % 2 === 0 ? sp.white : sp.trim.t4);
     }
+    c.fxEnd();
   }
 }
 
@@ -2377,6 +2388,7 @@ function drawSpire32(
 
   if (burst) {
     // 포자 고리 방출
+    c.fxBegin();
     const r = 8 + f * 2;
     for (let k = 0; k < 10; k += 1) {
       const a = (k / 10) * Math.PI * 2;
@@ -2385,23 +2397,95 @@ function drawSpire32(
       c.px(x, y, k % 2 === 0 ? sp.trim.t4 : [250, 255, 220]);
       c.px(x + 1, y, sp.trim.t2);
     }
+    c.fxEnd();
   } else if (f === 1) {
+    c.fxBegin();
     c.px(12, 0, sp.trim.t3);
     c.px(19, 1, sp.trim.t4);
+    c.fxEnd();
   }
 }
 
+// ─────────────────────────── 스프라이트 시트 사양 ───────────────────────────
+// 32x32 논리 프레임 · 스프라이트당 16색(외곽선 포함, 투명 제외) · IDLE 2 / WALK 4 / ATTACK 4
+// 프레임별 얼굴·의상·크기·중심점·발 기준선 유지 · 여백·텍스트·그림자·안티앨리어싱 없음
+
+export const SPRITE_FRAME_COUNT: Readonly<Record<SpriteAnim, number>> = { IDLE: 2, WALK: 4, ATTACK: 4 };
+export const SPRITE_MAX_COLORS = 16;
+/** 발 기준선: 모든 프레임·방향에서 가장 아래 불투명 픽셀이 이 행에 닿는다 */
+export const SPRITE_BASELINE_Y = 31;
+/** 중심점(피벗): 기준 프레임(IDLE 0)의 발 중심이 이 x 위치(15.5 = 16px 폭의 정중앙)에 온다 */
+export const SPRITE_PIVOT_X = 15.5;
+/** 이 행부터 아래는 하체(다리): 걷기 보폭·디딤발 처리 대상 */
+const HIP_Y = 24;
+/** 이 행부터 위는 머리·어깨: 공격 반동은 이 부분만 젖힌다 */
+const SHOULDER_Y = 16;
+
+type PixelBuf = Uint8ClampedArray;
+
+interface FramePlan {
+  drawAnim: SpriteAnim;
+  drawFrame: number;
+  fx: boolean;
+  /** 상체(splitY 위쪽) 이동량 */
+  upper: [number, number];
+  splitY: number;
+  legL: [number, number];
+  legR: [number, number];
+}
+
+function dirUnit(dir: SpriteDir8): [number, number] {
+  const { dx, dy } = dir8Vector(dir);
+  return [dx > 0.3 ? 1 : dx < -0.3 ? -1 : 0, dy > 0.3 ? 1 : dy < -0.3 ? -1 : 0];
+}
+
 /**
- * 순수 함수: 아키타입 + 팔레트 + 프레임 + 8방향(SpriteDir8) + 상태(IDLE|WALK|ATTACK) → 32x32 RGBA 픽셀 버퍼.
+ * 공용 애니메이터: 상태·프레임 번호를 드로잉 포즈 + 1px 관절 이동으로 바꾼다.
+ * - IDLE 0 기본 / 1 숨쉬기(상체 1px 위)
+ * - WALK 0 왼발 착지(보폭) / 1 지나가기(상체·오른발 들림) / 2 오른발 착지 / 3 지나가기(상체·왼발 들림)
+ * - ATTACK 0 예비동작(상체를 조준 반대로 젖힘) / 1 발사(이펙트) / 2 반동(머리·어깨 젖힘) / 3 복귀(앞으로 1px 따라감)
+ * 디딤발은 항상 기준선에 남아 있어 발 기준선이 흔들리지 않는다.
  */
-export function renderSpritePixels(
+function planFrame(anim: SpriteAnim, frame: number, dir: SpriteDir8): FramePlan {
+  const n = SPRITE_FRAME_COUNT[anim];
+  const f = ((Math.round(frame) % n) + n) % n;
+  const [ux, uy] = dirUnit(dir);
+  const base: FramePlan = { drawAnim: anim, drawFrame: f, fx: false, upper: [0, 0], splitY: HIP_Y, legL: [0, 0], legR: [0, 0] };
+  if (anim === 'IDLE') {
+    return { ...base, fx: true, upper: f === 1 ? [0, -1] : [0, 0] };
+  }
+  if (anim === 'WALK') {
+    switch (f) {
+      case 0:
+        return { ...base, legL: [-1, 0] };
+      case 1:
+        return { ...base, upper: [0, -1], legR: [0, -1] };
+      case 2:
+        return { ...base, legR: [1, 0] };
+      default:
+        return { ...base, upper: [0, -1], legL: [0, -1] };
+    }
+  }
+  switch (f) {
+    case 0:
+      return { ...base, drawFrame: 0, upper: [-ux, -uy] };
+    case 1:
+      return { ...base, drawFrame: 0, fx: true };
+    case 2:
+      return { ...base, drawFrame: 1, fx: true, upper: [-ux, -uy], splitY: SHOULDER_Y };
+    default:
+      return { ...base, drawFrame: 1, upper: [ux, uy] };
+  }
+}
+
+/** 아키타입별 원본 드로잉 (몸 + 이펙트 레이어, 외곽선 후처리 전) */
+function drawRaw(
   archetype: SpriteArchetype,
   palette: FactionPalette,
-  frame: number = 0,
-  dir: SpriteDir8 = 'S',
-  anim: SpriteAnim = 'IDLE'
-): { width: number; height: number; data: Uint8ClampedArray } {
-  const f = Math.abs(Math.round(frame));
+  f: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): SculptCanvas32 {
   const canvas = new SculptCanvas32();
 
   switch (archetype) {
@@ -2505,11 +2589,390 @@ export function renderSpritePixels(
       break;
   }
 
-  // SOLDIER 기본 철갑 팔레트 frame 0일 때는 IMG_2485.png / IMG_2486.png 원본과 1px의 오차도 없도록 추가 외곽선 패스를 생략한다
-  if (!(archetype === 'SOLDIER' && (anim === 'IDLE' || anim === 'ATTACK') && f % 2 === 0)) {
-    canvas.finalizeOutline();
+  return canvas;
+}
+
+const isOutlinePx = (d: PixelBuf, i: number): boolean =>
+  d[i] === OUTLINE_RGB[0] && d[i + 1] === OUTLINE_RGB[1] && d[i + 2] === OUTLINE_RGB[2];
+
+function translateBuf(src: PixelBuf, ox: number, oy: number): PixelBuf {
+  const out = new Uint8ClampedArray(src.length);
+  for (let y = 0; y < SPRITE_SIZE; y += 1) {
+    const sy = y - oy;
+    if (sy < 0 || sy >= SPRITE_SIZE) continue;
+    for (let x = 0; x < SPRITE_SIZE; x += 1) {
+      const sx = x - ox;
+      if (sx < 0 || sx >= SPRITE_SIZE) continue;
+      const si = (sy * SPRITE_SIZE + sx) * 4;
+      if (src[si + 3] === 0) continue;
+      const di = (y * SPRITE_SIZE + x) * 4;
+      out[di] = src[si];
+      out[di + 1] = src[si + 1];
+      out[di + 2] = src[si + 2];
+      out[di + 3] = 255;
+    }
   }
-  return { width: canvas.size, height: canvas.size, data: canvas.data };
+  return out;
+}
+
+function bottomRow(d: PixelBuf): number {
+  for (let y = SPRITE_SIZE - 1; y >= 0; y -= 1) {
+    for (let x = 0; x < SPRITE_SIZE; x += 1) {
+      if (d[(y * SPRITE_SIZE + x) * 4 + 3] > 0) return y;
+    }
+  }
+  return SPRITE_BASELINE_Y;
+}
+
+/** 기준 프레임(IDLE 0)의 발 중심·바닥을 피벗·기준선에 맞추는 방향별 이동량 */
+const pivotCache = new Map<string, [number, number]>();
+function pivotOffset(archetype: SpriteArchetype, palette: FactionPalette, dir: SpriteDir8): [number, number] {
+  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${dir}`;
+  const hit = pivotCache.get(key);
+  if (hit) return hit;
+  const ref = drawRaw(archetype, palette, 0, dir, 'IDLE').body;
+  const by = bottomRow(ref);
+  let sum = 0;
+  let cnt = 0;
+  for (let y = Math.max(0, by - 3); y <= by; y += 1) {
+    for (let x = 0; x < SPRITE_SIZE; x += 1) {
+      if (ref[(y * SPRITE_SIZE + x) * 4 + 3] > 0) {
+        sum += x;
+        cnt += 1;
+      }
+    }
+  }
+  const cx = cnt > 0 ? sum / cnt : SPRITE_PIVOT_X;
+  // 실루엣이 프레임 밖으로 잘리지 않는 범위 안에서만 피벗을 맞춘다
+  let minX = SPRITE_SIZE;
+  let maxX = -1;
+  for (let i = 3; i < ref.length; i += 4) {
+    if (ref[i] === 0) continue;
+    const x = ((i - 3) / 4) % SPRITE_SIZE;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+  }
+  const want = Math.round(SPRITE_PIVOT_X - cx);
+  const ox = maxX < 0 ? 0 : Math.max(-minX, Math.min(SPRITE_SIZE - 1 - maxX, want));
+  const off: [number, number] = [ox, SPRITE_BASELINE_Y - by];
+  pivotCache.set(key, off);
+  return off;
+}
+
+/** 몸통 띠(10~23행) 불투명 픽셀 x의 중앙값 */
+function torsoMedianX(d: PixelBuf): number {
+  const xs: number[] = [];
+  for (let y = 10; y <= 23; y += 1) {
+    for (let x = 0; x < SPRITE_SIZE; x += 1) {
+      if (d[(y * SPRITE_SIZE + x) * 4 + 3] > 0) xs.push(x);
+    }
+  }
+  xs.sort((p2, q) => p2 - q);
+  return xs.length ? xs[xs.length >> 1] : SPRITE_PIVOT_X;
+}
+
+/** 공격 포즈 원화의 몸통이 대기 포즈와 어긋나 있으면(원본 시트 드리프트) 대기 포즈 기준으로 맞춘다 */
+const attackAlignCache = new Map<string, number>();
+function attackAlignX(archetype: SpriteArchetype, palette: FactionPalette, dir: SpriteDir8): number {
+  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${dir}`;
+  const hit = attackAlignCache.get(key);
+  if (hit !== undefined) return hit;
+  const idle = torsoMedianX(drawRaw(archetype, palette, 0, dir, 'IDLE').body);
+  const atk = torsoMedianX(drawRaw(archetype, palette, 0, dir, 'ATTACK').body);
+  const v = Math.max(-3, Math.min(3, Math.round(idle - atk)));
+  attackAlignCache.set(key, v);
+  return v;
+}
+
+/**
+ * 관절 이동: 상체는 원본 위에 덧칠(빈틈 대신 1px 늘어나 몸통이 끊기지 않음),
+ * 다리는 원래 자리를 비우고 옮긴다(들어 올린 발이 바닥에 잔상으로 남지 않음).
+ */
+function applyPose(src: PixelBuf, plan: FramePlan): PixelBuf {
+  const out = new Uint8ClampedArray(src);
+  const moves: Array<{ ox: number; oy: number; clear: boolean; test: (x: number, y: number) => boolean }> = [
+    { ox: plan.legL[0], oy: plan.legL[1], clear: true, test: (x, y) => y >= HIP_Y && x < 16 },
+    { ox: plan.legR[0], oy: plan.legR[1], clear: true, test: (x, y) => y >= HIP_Y && x >= 16 },
+    { ox: plan.upper[0], oy: plan.upper[1], clear: false, test: (_x, y) => y < plan.splitY },
+  ];
+  for (const mv of moves) {
+    if (mv.ox === 0 && mv.oy === 0) continue;
+    if (mv.clear) {
+      for (let y = 0; y < SPRITE_SIZE; y += 1) {
+        for (let x = 0; x < SPRITE_SIZE; x += 1) {
+          if (mv.test(x, y)) out[(y * SPRITE_SIZE + x) * 4 + 3] = 0;
+        }
+      }
+    }
+    for (let y = 0; y < SPRITE_SIZE; y += 1) {
+      for (let x = 0; x < SPRITE_SIZE; x += 1) {
+        if (!mv.test(x, y)) continue;
+        const si = (y * SPRITE_SIZE + x) * 4;
+        if (src[si + 3] === 0) continue;
+        const tx = x + mv.ox;
+        const ty = y + mv.oy;
+        if (tx < 0 || tx >= SPRITE_SIZE || ty < 0 || ty >= SPRITE_SIZE) continue;
+        const di = (ty * SPRITE_SIZE + tx) * 4;
+        out[di] = src[si];
+        out[di + 1] = src[si + 1];
+        out[di + 2] = src[si + 2];
+        out[di + 3] = 255;
+      }
+    }
+  }
+  return out;
+}
+
+// ── 16색 양자화: 스프라이트(아키타입 × 팔레트)마다 전 방향·전 상태 공용 팔레트 1벌 ──
+
+const colorDist = (a: Rgb, b: Rgb): number => {
+  const rm = (a[0] + b[0]) / 2;
+  const dr = a[0] - b[0];
+  const dg = a[1] - b[1];
+  const db = a[2] - b[2];
+  return (2 + rm / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rm) / 256) * db * db;
+};
+
+const spritePaletteCache = new Map<string, Rgb[]>();
+
+/** 결정론적 메디안 컷 + k-means 다듬기로 외곽선 1 + 15색을 고른다 */
+export function getSpritePalette16(archetype: SpriteArchetype, palette: FactionPalette): Rgb[] {
+  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}`;
+  const hit = spritePaletteCache.get(key);
+  if (hit) return hit;
+  const counts = new Map<number, number>();
+  for (const dir of ALL_DIRS_8) {
+    for (const [anim, fr] of [['IDLE', 0], ['IDLE', 1], ['WALK', 0], ['ATTACK', 0], ['ATTACK', 1]] as const) {
+      const d = drawRaw(archetype, palette, fr, dir, anim).body;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] === 0 || isOutlinePx(d, i)) continue;
+        const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+        counts.set(k, (counts.get(k) ?? 0) + 1);
+      }
+    }
+  }
+  const pts = [...counts.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([k, n]) => ({ c: [(k >> 16) & 255, (k >> 8) & 255, k & 255] as Rgb, w: Math.sqrt(n) }));
+  const K = SPRITE_MAX_COLORS - 1;
+  let centers: Rgb[];
+  if (pts.length <= K) {
+    centers = pts.map((p) => p.c);
+  } else {
+    // 메디안 컷: 가중 분산이 가장 큰 상자를 가장 긴 축으로 반분
+    let boxes = [pts];
+    while (boxes.length < K) {
+      let bi = -1;
+      let best = -1;
+      let axis = 0;
+      boxes.forEach((bx, i) => {
+        if (bx.length < 2) return;
+        for (let ch = 0; ch < 3; ch += 1) {
+          let lo = 255;
+          let hi = 0;
+          for (const p of bx) {
+            lo = Math.min(lo, p.c[ch]);
+            hi = Math.max(hi, p.c[ch]);
+          }
+          const tot = bx.reduce((s2, p) => s2 + p.w, 0);
+          const score = (hi - lo) * Math.sqrt(tot);
+          if (score > best) {
+            best = score;
+            bi = i;
+            axis = ch;
+          }
+        }
+      });
+      if (bi < 0) break;
+      const bx = [...boxes[bi]].sort((p, q) => p.c[axis] - q.c[axis] || p.c[0] - q.c[0] || p.c[1] - q.c[1] || p.c[2] - q.c[2]);
+      const half = bx.reduce((s2, p) => s2 + p.w, 0) / 2;
+      let acc = 0;
+      let cut = 1;
+      for (; cut < bx.length - 1; cut += 1) {
+        acc += bx[cut - 1].w;
+        if (acc >= half) break;
+      }
+      boxes.splice(bi, 1, bx.slice(0, cut), bx.slice(cut));
+    }
+    const mean = (bx: typeof pts): Rgb => {
+      const t = bx.reduce((s2, p) => s2 + p.w, 0) || 1;
+      return [0, 1, 2].map((ch) => Math.round(bx.reduce((s2, p) => s2 + p.c[ch] * p.w, 0) / t)) as Rgb;
+    };
+    centers = boxes.map(mean);
+    for (let it = 0; it < 4; it += 1) {
+      const groups: (typeof pts)[] = centers.map(() => []);
+      for (const p of pts) {
+        let bi = 0;
+        let bd = Infinity;
+        centers.forEach((c2, i) => {
+          const d2 = colorDist(p.c, c2);
+          if (d2 < bd) {
+            bd = d2;
+            bi = i;
+          }
+        });
+        groups[bi].push(p);
+      }
+      centers = centers.map((c2, i) => (groups[i].length ? mean(groups[i]) : c2));
+    }
+    // 가장 밝은 하이라이트는 평균에 묻히지 않도록 실제 최고 명도색으로 고정
+    const lum = (c2: Rgb): number => c2[0] * 0.3 + c2[1] * 0.59 + c2[2] * 0.11;
+    const brightest = pts.reduce((m2, p) => (lum(p.c) > lum(m2.c) ? p : m2), pts[0]).c;
+    let ni = 0;
+    centers.forEach((c2, i) => {
+      if (colorDist(c2, brightest) < colorDist(centers[ni], brightest)) ni = i;
+    });
+    centers[ni] = brightest;
+  }
+  const pal: Rgb[] = [OUTLINE_RGB, ...centers];
+  spritePaletteCache.set(key, pal);
+  return pal;
+}
+
+function quantizeBuf(d: PixelBuf, pal: Rgb[]): void {
+  const memo = new Map<number, Rgb>();
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    if (isOutlinePx(d, i)) continue;
+    const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+    let c2 = memo.get(k);
+    if (!c2) {
+      const src: Rgb = [d[i], d[i + 1], d[i + 2]];
+      let bd = Infinity;
+      c2 = pal[1] ?? OUTLINE_RGB;
+      for (let j = 1; j < pal.length; j += 1) {
+        const dd = colorDist(src, pal[j]);
+        if (dd < bd) {
+          bd = dd;
+          c2 = pal[j];
+        }
+      }
+      memo.set(k, c2);
+    }
+    d[i] = c2[0];
+    d[i + 1] = c2[1];
+    d[i + 2] = c2[2];
+    d[i + 3] = 255;
+  }
+}
+
+/** 색 픽셀이 투명과 맞닿은 곳에만 1px 외곽선 (외곽선을 겹겹이 두껍게 만들지 않는다) */
+function outlineBuf(d: PixelBuf): void {
+  const snap = new Uint8ClampedArray(d);
+  const solid = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= SPRITE_SIZE || y >= SPRITE_SIZE) return false;
+    const i = (y * SPRITE_SIZE + x) * 4;
+    return snap[i + 3] > 0 && !isOutlinePx(snap, i);
+  };
+  for (let y = 0; y < SPRITE_SIZE; y += 1) {
+    for (let x = 0; x < SPRITE_SIZE; x += 1) {
+      const i = (y * SPRITE_SIZE + x) * 4;
+      if (snap[i + 3] > 0) continue;
+      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) {
+        d[i] = OUTLINE_RGB[0];
+        d[i + 1] = OUTLINE_RGB[1];
+        d[i + 2] = OUTLINE_RGB[2];
+        d[i + 3] = 255;
+      }
+    }
+  }
+}
+
+interface SpriteFrameBufs {
+  body: PixelBuf;
+  fx: PixelBuf;
+}
+
+const frameMemo = new Map<string, SpriteFrameBufs>();
+
+function composeFrame(
+  archetype: SpriteArchetype,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): SpriteFrameBufs {
+  const plan = planFrame(anim, frame, dir);
+  const key = `${archetype}|${palette.primary}|${palette.secondary}|${palette.accent}|${dir}|${anim}|${plan.drawFrame}|${frame % SPRITE_FRAME_COUNT[anim]}`;
+  const hit = frameMemo.get(key);
+  if (hit) return hit;
+
+  const raw = drawRaw(archetype, palette, plan.drawFrame, dir, plan.drawAnim);
+  const [px0, oy] = pivotOffset(archetype, palette, dir);
+  const ox = px0 + (plan.drawAnim === 'ATTACK' ? attackAlignX(archetype, palette, dir) : 0);
+  let body = translateBuf(raw.body, ox, oy);
+  let fx = plan.fx ? translateBuf(raw.fx, ox, oy) : new Uint8ClampedArray(raw.fx.length);
+  body = applyPose(body, plan);
+  quantizeBuf(body, getSpritePalette16(archetype, palette));
+  outlineBuf(body);
+  const snap = SPRITE_BASELINE_Y - bottomRow(body);
+  if (snap !== 0) {
+    body = translateBuf(body, 0, snap);
+    fx = translateBuf(fx, 0, snap);
+  }
+  const out = { body, fx };
+  if (frameMemo.size > 512) frameMemo.clear();
+  frameMemo.set(key, out);
+  return out;
+}
+
+/**
+ * 순수 함수: 아키타입 + 팔레트 + 프레임 + 8방향 + 상태 → 32x32 RGBA 몸 프레임 (스프라이트 시트 사양 준수).
+ * 프레임 번호는 상태별 프레임 수(IDLE 2 / WALK 4 / ATTACK 4)로 순환한다.
+ */
+export function renderSpritePixels(
+  archetype: SpriteArchetype,
+  palette: FactionPalette,
+  frame: number = 0,
+  dir: SpriteDir8 = 'S',
+  anim: SpriteAnim = 'IDLE'
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const { body } = composeFrame(archetype, palette, Math.abs(Math.round(frame)), dir, anim);
+  return { width: SPRITE_SIZE, height: SPRITE_SIZE, data: new Uint8ClampedArray(body) };
+}
+
+/** 같은 프레임의 이펙트 레이어 (총구 섬광·번개 등). 비어 있으면 null */
+export function renderSpriteFxPixels(
+  archetype: SpriteArchetype,
+  palette: FactionPalette,
+  frame: number = 0,
+  dir: SpriteDir8 = 'S',
+  anim: SpriteAnim = 'IDLE'
+): { width: number; height: number; data: Uint8ClampedArray } | null {
+  const { fx } = composeFrame(archetype, palette, Math.abs(Math.round(frame)), dir, anim);
+  for (let i = 3; i < fx.length; i += 4) {
+    if (fx[i] > 0) return { width: SPRITE_SIZE, height: SPRITE_SIZE, data: new Uint8ClampedArray(fx) };
+  }
+  return null;
+}
+
+/** 시트 열 순서: IDLE 2 → WALK 4 → ATTACK 4 (행 = ALL_DIRS_8 순서) */
+export const SPRITE_SHEET_COLUMNS: ReadonlyArray<{ anim: SpriteAnim; frame: number }> = (['IDLE', 'WALK', 'ATTACK'] as const).flatMap(
+  (anim) => Array.from({ length: SPRITE_FRAME_COUNT[anim] }, (_, frame) => ({ anim, frame }))
+);
+
+/**
+ * 여백·간격 없는 스프라이트 시트 (몸 레이어만, 그림자·텍스트 없음).
+ * 크기 = (열 10 × 32) × (방향 8 × 32) = 320 × 256, 피벗 (16, 31).
+ */
+export function renderSpriteSheet(
+  archetype: SpriteArchetype,
+  palette: FactionPalette
+): { width: number; height: number; data: Uint8ClampedArray; pivot: { x: number; y: number }; palette: Rgb[] } {
+  const cols = SPRITE_SHEET_COLUMNS.length;
+  const width = cols * SPRITE_SIZE;
+  const height = ALL_DIRS_8.length * SPRITE_SIZE;
+  const data = new Uint8ClampedArray(width * height * 4);
+  ALL_DIRS_8.forEach((dir, row) => {
+    SPRITE_SHEET_COLUMNS.forEach(({ anim, frame }, col) => {
+      const fr = renderSpritePixels(archetype, palette, frame, dir, anim).data;
+      for (let y = 0; y < SPRITE_SIZE; y += 1) {
+        const di = ((row * SPRITE_SIZE + y) * width + col * SPRITE_SIZE) * 4;
+        data.set(fr.subarray(y * SPRITE_SIZE * 4, (y + 1) * SPRITE_SIZE * 4), di);
+      }
+    });
+  });
+  return { width, height, data, pivot: { x: 16, y: SPRITE_BASELINE_Y }, palette: getSpritePalette16(archetype, palette) };
 }
 
 /** 하위 호환용 ASCII 실루엣 맵 추출기 */

@@ -21,7 +21,7 @@ function usePose(): Pose {
   }, []);
   const dir = ALL_DIRS_8[Math.floor(tick / 2) % ALL_DIRS_8.length];
   const anim: SpriteAnim = tick % 6 >= 4 ? 'ATTACK' : tick % 6 >= 2 ? 'WALK' : 'IDLE';
-  return { frame: anim === 'WALK' ? tick % 4 : tick % 2, dir, anim };
+  return { frame: anim === 'IDLE' ? tick % 2 : tick % 4, dir, anim };
 }
 
 export const SurvivorTitle: React.FC = () => {

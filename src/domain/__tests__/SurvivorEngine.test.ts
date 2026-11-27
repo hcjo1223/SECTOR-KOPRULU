@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assignSlots, buildSlotOffsets, capacityForRings, pickActiveSlots } from '../survivor/Formation';
 import { SpatialHash } from '../survivor/SpatialHash';
 import { getAllEnemies, getAllModules, getAllSquadUnits, getFactions, getSquadUnitDef, getWaveTable } from '../survivor/SurvivorCatalog';
-import { MAX_SQUADS, squadHeadcount, SurvivorEngine } from '../survivor/SurvivorEngine';
+import { ATTACK_RELEASE_SEC, attackWindupSec, MAX_SQUADS, squadHeadcount, SURVIVOR_DT, SurvivorEngine } from '../survivor/SurvivorEngine';
 
 /** 시작 분대가 없어졌으므로, 분대 보유를 전제로 한 테스트는 추천 분대를 직접 지급한다 */
 function withStarter(e: SurvivorEngine, unitId: string): SurvivorEngine {
@@ -202,4 +202,63 @@ describe('SurvivorEngine', () => {
     e.step(5);
     expect(e.phase).toBe('DEFEAT');
   });
+
+  it('attacks play a windup (ATTACK 0) before the hit lands, then the release frames', () => {
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 21), 'ic_rifle');
+    e.step(60);
+    const m = e.squad[0];
+    m.cooldown = 0;
+    e.commander.cooldown = 99;
+    const target = e.spawnEnemyAt('brute', m.x + 50, m.y);
+    const hp0 = target.hp;
+    e.step(1);
+    expect(m.windupSec).toBeGreaterThan(0);
+    expect(m.attackFlashSec).toBe(0);
+    // 예비동작 중에는 아무 탄도 나가지 않는다
+    expect(e.projectiles.length).toBe(0);
+    const windupTicks = Math.ceil(attackWindupSec(m.def.attack.cooldownSec) / SURVIVOR_DT);
+    e.step(windupTicks);
+    expect(m.windupSec).toBe(0);
+    expect(m.attackFlashSec).toBeGreaterThan(0);
+    expect(m.attackFlashSec).toBeLessThanOrEqual(ATTACK_RELEASE_SEC);
+    expect(e.projectiles.length + (target.hp < hp0 ? 1 : 0)).toBeGreaterThan(0);
+  });
+
+  it('windup does not change damage per second: attack cadence still equals the cooldown', () => {
+    const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 22), 'ic_rifle');
+    e.step(60);
+    const m = e.squad[0];
+    e.commander.cooldown = 1e9;
+    const t = e.spawnEnemyAt('brute', m.x + 40, m.y);
+    let shots = 0;
+    let prev = 0;
+    const seconds = 12;
+    for (let i = 0; i < seconds / SURVIVOR_DT; i += 1) {
+      t.hp = t.maxHp;
+      t.x = m.x + 40;
+      t.y = m.y;
+      e.step(1);
+      if (m.attackFlashSec > prev) shots += 1;
+      prev = m.attackFlashSec;
+    }
+    const expected = seconds / m.def.attack.cooldownSec;
+    expect(Math.abs(shots - expected)).toBeLessThanOrEqual(2);
+  });
+
+  it('enemy bites wind up first and whiff if the target escapes the reach in time', () => {
+    const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 23);
+    e.commander.cooldown = 1e9;
+    const c = e.commander;
+    const mite = e.spawnEnemyAt('mite', c.x + c.radius + 4, c.y);
+    const hp0 = c.hp + c.shield;
+    e.step(1);
+    expect(mite.windupSec).toBeGreaterThan(0);
+    expect(c.hp + c.shield).toBe(hp0);
+    // 예비동작 사이에 멀리 벗어나면 빗나간다
+    c.x -= 60;
+    e.step(8);
+    expect(c.hp + c.shield).toBe(hp0);
+    expect(mite.attackFlashSec).toBe(0);
+  });
 });
+
