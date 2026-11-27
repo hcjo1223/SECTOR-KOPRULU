@@ -6,7 +6,6 @@ import {
   OUTLINE_RGB,
   renderGemPixels,
   renderGroundTilePixels,
-  renderSlimeTilePixels,
   renderSpritePixels,
   SPRITE_SIZE,
 } from '../SurvivorSprites';
@@ -123,7 +122,7 @@ describe('SurvivorSprites', () => {
     expect(dirHashes.size).toBe(8);
   });
 
-  it('renders distinct faction commander pixel designs for IRONCLAD, HIVE, and LUMEN', () => {
+  it('renders distinct commander designs for the Nova player and the hive / lumen enemy commanders', () => {
     const ic = renderSpritePixels('COMMANDER', ironcladPalette, 0);
     const hv = renderSpritePixels('COMMANDER', hivePalette, 0);
     const lm = renderSpritePixels('COMMANDER', lumenPalette, 0);
@@ -140,7 +139,7 @@ describe('SurvivorSprites', () => {
     expect(mask(hv.data)).not.toBe(mask(lm.data));
   });
 
-  it('renders pixel XP gems, slime decals, and ground tiles cleanly', () => {
+  it('renders pixel XP gems and ground tiles cleanly', () => {
     for (const tier of [1, 2, 3] as const) {
       const g0 = renderGemPixels(tier, 0);
       const g1 = renderGemPixels(tier, 1);
@@ -148,12 +147,6 @@ describe('SurvivorSprites', () => {
       expect(g0.data.some((v, idx) => idx % 4 === 3 && v > 0)).toBe(true);
       expect(g0.data.some((v, idx) => v !== g1.data[idx])).toBe(true);
     }
-
-    const slime0 = renderSlimeTilePixels(hivePalette, 0);
-    const slime1 = renderSlimeTilePixels(hivePalette, 1);
-    expect(slime0.width).toBe(28);
-    expect(slime0.data.some((v, idx) => idx % 4 === 3 && v > 0)).toBe(true);
-    expect(slime0.data.some((v, idx) => v !== slime1.data[idx])).toBe(true);
 
     const ground = renderGroundTilePixels();
     expect(ground.width).toBe(64);

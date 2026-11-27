@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getSpriteDataUrl } from '../core/SurvivorRenderer';
 import { ALL_DIRS_8, type SpriteAnim, type SpriteDir8 } from '../core/SurvivorSprites';
-import { getAllEnemies, getFactions, getSquadUnitDef } from '../domain/survivor/SurvivorCatalog';
+import { getAllEnemies, getFactions, getSquadUnitDef, getWaveTable } from '../domain/survivor/SurvivorCatalog';
 import type { FactionDef } from '../domain/survivor/types';
 import { useSurvivorStore } from '../store/useSurvivorStore';
 import { evolutionHint, unitTagLine } from './survivorLabels';
@@ -25,7 +25,8 @@ function usePose(): Pose {
 }
 
 export const SurvivorTitle: React.FC = () => {
-  const [faction, setFaction] = useState<FactionDef | null>(null);
+  // 플레이어 진영은 노바 기동군 하나: 진영 소개 후 바로 지휘관을 고른다
+  const faction = getFactions()[0];
   const pose = usePose();
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center overflow-y-auto bg-[#070b12]/95 px-4 py-6">
@@ -37,76 +38,80 @@ export const SurvivorTitle: React.FC = () => {
         </p>
         <p className="mt-1 font-mono-tech text-[10px] text-slate-500">WASD / 방향키 이동 · Space 일시정지 · 모바일: 드래그 조이스틱</p>
       </div>
-      {faction ? <CommanderSelect faction={faction} pose={pose} onBack={() => setFaction(null)} /> : <FactionSelect pose={pose} onPick={setFaction} />}
+      <FactionBanner faction={faction} pose={pose} />
+      <CommanderSelect faction={faction} pose={pose} />
       <EnemyRoster pose={pose} />
     </div>
   );
 };
 
-const EnemyRoster: React.FC<{ pose: Pose }> = ({ pose }) => (
-  <div className="mt-3 w-full max-w-5xl rounded border border-rose-900/50 bg-slate-950/85 px-3 py-2">
-    <div className="mb-1 font-mono-tech text-[10px] tracking-wider text-rose-400 uppercase">위협 개체 · 블라이트 무리</div>
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      {getAllEnemies().map((e) => (
-        <div key={e.id} className="flex items-center gap-1" title={e.name}>
-          <img src={getSpriteDataUrl(e.sprite, e.palette, pose.frame, pose.dir, pose.anim)} alt={e.name} className="pixelated h-8 w-8" />
-          <span className="font-mono-tech text-[10px] text-slate-300">
-            {e.name}
-            {e.id === 'matron' && <span className="ml-1 text-rose-400">[최종]</span>}
-            {(e.id === 'queen' || e.id === 'spire') && <span className="ml-1 text-amber-300">[중간]</span>}
-          </span>
+const ENEMY_GROUPS: ReadonlyArray<{ label: string; test: (id: string) => boolean }> = [
+  { label: '블라이트 무리', test: (id) => !id.startsWith('hive_') && !id.startsWith('lumen_') && id !== 'clawling' },
+  { label: '적응 군체', test: (id) => id.startsWith('hive_') || id === 'clawling' },
+  { label: '성휘 교단', test: (id) => id.startsWith('lumen_') },
+];
+
+const EnemyRoster: React.FC<{ pose: Pose }> = ({ pose }) => {
+  const events = getWaveTable().events;
+  const bossIds = new Set(events.filter((e) => e.kind === 'BOSS').map((e) => e.enemyId));
+  const midIds = new Set(events.filter((e) => e.kind === 'MINIBOSS').map((e) => e.enemyId));
+  const enemies = getAllEnemies();
+  return (
+    <div className="mt-3 w-full max-w-5xl rounded border border-rose-900/50 bg-slate-950/85 px-3 py-2">
+      <div className="mb-1 font-mono-tech text-[10px] tracking-wider text-rose-400 uppercase">위협 개체</div>
+      {ENEMY_GROUPS.map((g) => (
+        <div key={g.label} className="mb-1">
+          <div className="font-mono-tech text-[10px] text-slate-500">{g.label}</div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {enemies
+              .filter((e) => g.test(e.id))
+              .map((e) => (
+                <div key={e.id} className="flex items-center gap-1" title={e.name}>
+                  <img src={getSpriteDataUrl(e.sprite, e.palette, pose.frame, pose.dir, pose.anim)} alt={e.name} className="pixelated h-8 w-8" />
+                  <span className="font-mono-tech text-[10px] text-slate-300">
+                    {e.name}
+                    {bossIds.has(e.id) && <span className="ml-1 text-rose-400">[최종]</span>}
+                    {midIds.has(e.id) && <span className="ml-1 text-amber-300">[중간]</span>}
+                  </span>
+                </div>
+              ))}
+          </div>
         </div>
       ))}
     </div>
+  );
+};
+
+const FactionBanner: React.FC<{ faction: FactionDef; pose: Pose }> = ({ faction: f, pose }) => (
+  <div className="mb-3 w-full max-w-5xl rounded border bg-slate-900/90 p-3.5" style={{ borderColor: `${f.palette.primary}99` }}>
+    <div className="flex items-baseline justify-between">
+      <span className="font-pixel text-base text-slate-100">{f.name}</span>
+      <span className="font-mono-tech text-[10px] text-slate-400">{f.subtitle}</span>
+    </div>
+    <div className="mt-2 grid grid-cols-8 gap-0.5 rounded border border-slate-800 bg-[#05080f] p-1">
+      {f.unitPool.map((id) => {
+        const u = getSquadUnitDef(id);
+        return (
+          <img
+            key={id}
+            src={getSpriteDataUrl(u.sprite, u.paletteOverride ?? f.palette, pose.frame, pose.dir, pose.anim)}
+            alt={u.name}
+            title={u.name}
+            className="pixelated h-10 w-10"
+          />
+        );
+      })}
+    </div>
+    <div className="mt-2 text-xs font-semibold" style={{ color: f.palette.accent }}>[{f.traitName}]</div>
+    <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{f.traitDesc}</p>
   </div>
 );
 
-const FactionSelect: React.FC<{ pose: Pose; onPick: (f: FactionDef) => void }> = ({ pose, onPick }) => (
-  <div className="grid w-full max-w-5xl grid-cols-1 gap-3 lg:grid-cols-3">
-    {getFactions().map((f) => (
-      <button
-        key={f.id}
-        type="button"
-        onClick={() => onPick(f)}
-        className="flex cursor-pointer flex-col rounded border bg-slate-900/90 p-3.5 text-left hover:bg-slate-800/90"
-        style={{ borderColor: `${f.palette.primary}99` }}
-      >
-        <div className="flex items-baseline justify-between">
-          <span className="font-pixel text-base text-slate-100">{f.name}</span>
-          <span className="font-mono-tech text-[10px] text-slate-400">{f.subtitle}</span>
-        </div>
-        <div className="mt-2 grid grid-cols-8 gap-0.5 rounded border border-slate-800 bg-[#05080f] p-1">
-          {f.unitPool.map((id) => {
-            const u = getSquadUnitDef(id);
-            return (
-              <img
-                key={id}
-                src={getSpriteDataUrl(u.sprite, u.paletteOverride ?? f.palette, pose.frame, pose.dir, pose.anim)}
-                alt={u.name}
-                title={u.name}
-                className="pixelated h-10 w-10"
-              />
-            );
-          })}
-        </div>
-        <div className="mt-2 text-xs font-semibold" style={{ color: f.palette.accent }}>[{f.traitName}]</div>
-        <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{f.traitDesc}</p>
-        <div className="mt-2 font-mono-tech text-[10px] text-slate-500">
-          분대 {f.unitPool.length}종 · 지휘관 {f.commanders.length}명{f.unitPool.length < 8 ? ' · 프로토타입' : ''}
-        </div>
-      </button>
-    ))}
-  </div>
-);
-
-const CommanderSelect: React.FC<{ faction: FactionDef; pose: Pose; onBack: () => void }> = ({ faction: f, pose, onBack }) => {
+const CommanderSelect: React.FC<{ faction: FactionDef; pose: Pose }> = ({ faction: f, pose }) => {
   const startRun = useSurvivorStore((s) => s.startRun);
   return (
     <div className="w-full max-w-5xl">
-      <div className="mb-2 flex items-center justify-between">
-        <button type="button" onClick={onBack} className="cursor-pointer rounded border border-slate-700 px-2 py-1 font-mono-tech text-xs text-slate-300 hover:bg-slate-800">
-          ← 진영 선택
-        </button>
+      <div className="mb-2 flex items-center justify-end">
         <span className="font-pixel text-sm" style={{ color: f.palette.accent }}>{f.name} · 지휘관 선택</span>
       </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">

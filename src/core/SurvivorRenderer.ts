@@ -6,7 +6,6 @@ import {
   OUTLINE_RGB,
   renderGemPixels,
   renderGroundTilePixels,
-  renderSlimeTilePixels,
   renderSpriteFxPixels,
   renderSpritePixels,
   SPRITE_FRAME_COUNT,
@@ -132,22 +131,6 @@ function getGemTexture(tier: 1 | 2 | 3, frame: number): Texture {
   return tex;
 }
 
-function getSlimeTexture(palette: FactionPalette, frame: number): Texture {
-  const f = Math.abs(Math.round(frame)) % 2;
-  const key = `SLIME|${palette.primary}|${palette.secondary}|${palette.accent}|${f}`;
-  const hit = textureCache.get(key);
-  if (hit) {
-    return hit;
-  }
-  const source = new CanvasSource({
-    resource: pixelsToCanvas(renderSlimeTilePixels(palette, f)),
-    scaleMode: 'nearest',
-  });
-  const tex = new Texture({ source });
-  textureCache.set(key, tex);
-  return tex;
-}
-
 function buildGroundTexture(): Texture {
   const canvas = pixelsToCanvas(renderGroundTilePixels());
   return new Texture({ source: new CanvasSource({ resource: canvas, scaleMode: 'nearest' }) });
@@ -237,14 +220,13 @@ interface PooledSprite {
  * SurvivorEngine의 논리 상태를 읽어 픽셀 아트로 그리는 렌더러.
  * - 지휘관 추종 카메라 + 64x64 코프룰루 황무지/격자 심리스 픽셀 타일
  * - 18x18 볼륨 디더링 2프레임 유닛·적 스프라이트
- * - 픽셀 데칼 점액(Slime), 포진 전술 방어선(Entrench), 광휘 보호막(Lumen Shield)
+ * - 노바 기동군 포진 전술 방어선(Entrench)
  * - 3티어 픽셀 광물 결정(XP Gem) + 픽셀 탄환·포탄·광선창 + 7종 픽셀 전투 이펙트
  */
 export class SurvivorRenderer {
   public readonly root = new Container();
   private readonly ground: TilingSprite;
   private readonly world = new Container();
-  private readonly slimeLayer = new Container();
   private readonly groundFx = new Graphics();
   private readonly gemLayer = new Container();
   private readonly gemFx = new Graphics();
@@ -254,7 +236,6 @@ export class SurvivorRenderer {
   private readonly barGfx = new Graphics();
   private readonly sprites = new Map<number, PooledSprite>();
   private readonly gemSprites = new Map<number, PooledSprite>();
-  private readonly slimePool: Sprite[] = [];
   private frame = 0;
   private timeSec = 0;
   private viewW = VIRTUAL_WIDTH;
@@ -268,7 +249,6 @@ export class SurvivorRenderer {
     });
     this.unitLayer.sortableChildren = true;
     this.world.addChild(
-      this.slimeLayer,
       this.groundFx,
       this.gemFx,
       this.gemLayer,
@@ -296,9 +276,6 @@ export class SurvivorRenderer {
       g.sprite.destroy();
     }
     this.gemSprites.clear();
-    for (const s of this.slimePool) {
-      s.visible = false;
-    }
     this.groundFx.clear();
     this.gemFx.clear();
     this.projGfx.clear();
@@ -323,36 +300,10 @@ export class SurvivorRenderer {
     const primaryCol = hexNum(palette.primary);
     const animTick = Math.floor(this.timeSec * 6);
 
-    // ── 1. 적응 군체(HIVE) 점액 자취 픽셀 데칼 & 기포
     const gf = this.groundFx;
     gf.clear();
-    for (let i = 0; i < engine.slime.length; i += 1) {
-      const patch = engine.slime[i];
-      let sp = this.slimePool[i];
-      if (!sp) {
-        sp = new Sprite(getSlimeTexture(palette, 0));
-        sp.anchor.set(0.5, 0.5);
-        this.slimeLayer.addChild(sp);
-        this.slimePool.push(sp);
-      }
-      const slimeFrame = (animTick + i) % 2;
-      sp.texture = getSlimeTexture(palette, slimeFrame);
-      sp.visible = true;
-      sp.position.set(Math.round(patch.x), Math.round(patch.y));
-      sp.alpha = Math.min(1, patch.lifeSec / 1.2) * 0.82;
 
-      // 점막 위에서 피어오르는 산성 포자 픽셀 입자
-      if ((animTick + i * 3) % 4 === 0) {
-        const bx = Math.round(patch.x + Math.sin(i * 2.1 + this.timeSec * 3) * 7);
-        const by = Math.round(patch.y - 2 - ((this.timeSec * 10 + i * 3) % 6));
-        gf.rect(bx, by, 1, 1).fill({ color: 0xeaff90, alpha: sp.alpha });
-      }
-    }
-    for (let i = engine.slime.length; i < this.slimePool.length; i += 1) {
-      this.slimePool[i].visible = false;
-    }
-
-    // ── 2. 철갑 연합(IRONCLAD) 포진(Entrench) 전술 방어선 & 성휘 교단(LUMEN) 보호막 오라
+    // ── 2. 노바 기동군 포진(Entrench) 전술 방어선
     if (engine.isEntrenched) {
       const perimR = 26 * engine.rings + 16;
       const pulse = 0.45 + 0.18 * Math.sin(this.timeSec * 6);
@@ -371,20 +322,6 @@ export class SurvivorRenderer {
         gf.rect(px - 2, py - 2, 5, 5).fill({ color: OUTLINE_HEX, alpha: 0.85 });
         gf.rect(px - 1, py - 1, 3, 3).fill({ color: accentCol, alpha: 0.95 });
         gf.rect(px, py, 1, 1).fill({ color: 0xffffff, alpha: 0.95 });
-      }
-    }
-
-    if (engine.faction.id === 'LUMEN' && c.shield > 0) {
-      const regenActive = c.sinceHitSec >= 2.5;
-      const shieldAlpha = regenActive ? 0.55 + 0.2 * Math.sin(this.timeSec * 8) : 0.3;
-      drawPixelCircle(gf, camX, camY - 6, 15, 0x5fd8f0, shieldAlpha, 1, 2);
-      if (regenActive) {
-        for (let k = 0; k < 4; k += 1) {
-          const ang = this.timeSec * 3.5 + (k * Math.PI) / 2;
-          const mx = Math.round(camX + Math.cos(ang) * 15);
-          const my = Math.round(camY - 6 + Math.sin(ang) * 15);
-          gf.rect(mx, my, 2, 2).fill({ color: 0xe6ffff, alpha: 0.9 });
-        }
       }
     }
 
@@ -535,7 +472,7 @@ export class SurvivorRenderer {
       const my = lerp(m.py, m.y);
       const imx = Math.round(mx);
       const imy = Math.round(my);
-      // 부대원 발밑 그림자 & 성휘 보호막 링 / 철갑 포진 버프 마크
+      // 부대원 발밑 그림자 & 보호막 링 / 포진 버프 마크
       gf.rect(imx - 7, imy + 2, 14, 3).fill({ color: 0x04060a, alpha: 0.45 });
       if (m.shield > 0) {
         drawPixelCircle(gf, imx, imy - 6, 11, 0x5fd8f0, 0.25, 1, 3);
@@ -654,9 +591,8 @@ export class SurvivorRenderer {
     // ── 7. 7종 픽셀 전투 이펙트 (CONE, BOOM, PULSE, SLASH, HEAL, DEATH, LEVEL)
     const eg = this.fxGfx;
     eg.clear();
-    const isHive = engine.faction.id === 'HIVE';
     for (const f of engine.effects) {
-      this.renderPixelEffect(eg, f, isHive);
+      this.renderPixelEffect(eg, f);
     }
 
     // ── 8. 픽셀 체력바 & 보호막바 (지휘관 · 부대원 · 엘리트 · 보스)
@@ -722,7 +658,7 @@ export class SurvivorRenderer {
   /**
    * 7종 전투 이펙트를 픽셀 블록/도트 파티클로 렌더링한다.
    */
-  private renderPixelEffect(eg: Graphics, f: EffectState, isHive: boolean): void {
+  private renderPixelEffect(eg: Graphics, f: EffectState): void {
     const t = Math.max(0, Math.min(1, f.lifeSec / Math.max(0.001, f.maxLifeSec)));
     const p = 1 - t; // 진행률 0 -> 1
     const col = hexNum(f.color);
@@ -742,24 +678,10 @@ export class SurvivorRenderer {
           const px = Math.round(fx + Math.cos(ang) * dist);
           const py = Math.round(fy + Math.sin(ang) * dist);
 
-          let cMain: number;
-          let cCore: number;
-          if (isHive) {
-            // 산성 분사체: 네온 라임 -> 부식성 녹색 -> 보랏빛 독성 거품
-            cMain = distNorm < 0.4 ? 0xd8ff68 : distNorm < 0.75 ? 0x88d830 : 0x489020;
-            cCore = distNorm < 0.5 ? 0xf6ffd0 : 0xb8e04a;
-          } else {
-            // 화염 방사병: 백열 코어 -> 황금 화염 -> 주황/진홍 불길 -> 검붉은 연기
-            cMain =
-              distNorm < 0.35
-                ? 0xffe058
-                : distNorm < 0.7
-                  ? 0xff7418
-                  : distNorm < 0.9
-                    ? 0xd02818
-                    : 0x382428;
-            cCore = distNorm < 0.45 ? 0xffffff : 0xffb830;
-          }
+          // 화염 방사병: 백열 코어 -> 황금 화염 -> 주황/진홍 불길 -> 검붉은 연기
+          const cMain =
+            distNorm < 0.35 ? 0xffe058 : distNorm < 0.7 ? 0xff7418 : distNorm < 0.9 ? 0xd02818 : 0x382428;
+          const cCore = distNorm < 0.45 ? 0xffffff : 0xffb830;
           const bSize = distNorm > 0.45 && distNorm < 0.85 ? 3 : 2;
           eg.rect(px - 1, py - 1, bSize + 1, bSize + 1).fill({
             color: OUTLINE_HEX,
@@ -778,7 +700,7 @@ export class SurvivorRenderer {
           const ax = Math.round(fx + Math.cos(a) * frontR);
           const ay = Math.round(fy + Math.sin(a) * frontR);
           eg.rect(ax, ay, 2, 2).fill({
-            color: isHive ? 0xd8ff70 : 0xffae38,
+            color: 0xffae38,
             alpha: t * 0.85,
           });
         }
@@ -849,7 +771,7 @@ export class SurvivorRenderer {
             alpha: t * 0.8,
           });
           eg.rect(sx, sy, thick, thick).fill({
-            color: isHive ? 0xb8e04a : 0x6eeeff,
+            color: 0x6eeeff,
             alpha: t,
           });
           eg.rect(Math.round(sx + dirX), Math.round(sy + dirY), 1, 1).fill({

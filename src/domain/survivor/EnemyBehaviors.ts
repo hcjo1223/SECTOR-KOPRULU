@@ -116,7 +116,7 @@ export function stepEnemyAI(e: EnemyState, ctx: EnemyAIContext, dt: number): Vec
       e.attackTimer -= dt;
       if (e.attackTimer <= 0 && t.dist < 170) {
         e.attackTimer = 2.6;
-        ctx.fireShot(e.x, e.y, t.dx, t.dy, 95, e.damage, 3, '#b8e04a');
+        ctx.fireShot(e.x, e.y, t.dx, t.dy, 95, e.damage, 3, e.def.palette.accent);
       }
       if (t.dist > 130) {
         return chase(e, ctx);
@@ -153,7 +153,7 @@ export function stepEnemyAI(e: EnemyState, ctx: EnemyAIContext, dt: number): Vec
         e.spawnTimer = 3.2;
         for (let i = 0; i < 2; i += 1) {
           const a = ctx.rng() * Math.PI * 2;
-          ctx.spawnMinion('mite', e.x + Math.cos(a) * (e.radius + 6), e.y + Math.sin(a) * (e.radius + 6));
+          ctx.spawnMinion(e.def.minionId ?? 'mite', e.x + Math.cos(a) * (e.radius + 6), e.y + Math.sin(a) * (e.radius + 6));
         }
       }
       return ZERO;
@@ -167,7 +167,7 @@ export function stepEnemyAI(e: EnemyState, ctx: EnemyAIContext, dt: number): Vec
           if (e.dashCount > 0) {
             beginAim(e, ctx, 0.5, 200, '#ff4a4a');
           } else {
-            summonRing(e, ctx, 'mite', 8, e.radius + 14);
+            summonRing(e, ctx, e.def.minionId ?? 'mite', 8, e.radius + 14);
             ctx.effect('PULSE', e.x, e.y, 40, 0.4, '#ff4a4a');
             e.attackTimer = 3.5;
           }
@@ -190,7 +190,7 @@ export function stepEnemyAI(e: EnemyState, ctx: EnemyAIContext, dt: number): Vec
       if (e.attackTimer <= 0) {
         e.attackTimer = 2.4;
         const count = Math.min(26, 10 + Math.floor(e.ageSec / 20) * 3);
-        ringShots(e, ctx, count, 70, e.damage, '#d8f070');
+        ringShots(e, ctx, count, 70, e.damage, e.def.palette.accent);
       }
       if (e.spawnTimer <= 0) {
         e.spawnTimer = 6;

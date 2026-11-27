@@ -26,7 +26,6 @@ import type {
   ModuleState,
   ProjectileState,
   RunPhase,
-  SlimePatch,
   SquadMemberState,
   SquadState,
   SquadUnitDef,
@@ -61,11 +60,8 @@ const BOSS_WINDUP_SEC = 0.18;
 const ENEMY_BITE_REACH_PX = 4;
 const MAX_GEMS = 320;
 const MAX_EFFECTS = 260;
-const MAX_SLIME = 48;
 const MAX_MINES = 80;
 const MAX_ZONES = 48;
-const SLIME_RADIUS = 14;
-const SLIME_LIFE_SEC = 4;
 const SHIELD_REGEN_DELAY_SEC = 2.5;
 const GEM_MAGNET_SPEED = 240;
 const MINE_TRIGGER_PX = 9;
@@ -130,7 +126,6 @@ export class SurvivorEngine {
   public readonly mines: MineState[] = [];
   public readonly zones: ZoneState[] = [];
   public readonly effects: EffectState[] = [];
-  public readonly slime: SlimePatch[] = [];
   public readonly enemyShots: EnemyShotState[] = [];
   public readonly hazards: HazardState[] = [];
 
@@ -154,7 +149,6 @@ export class SurvivorEngine {
   private pendingLevelUps = 0;
   private pendingChests = 0;
   private regenPerSec = 0;
-  private slimeTimer = 0;
   private readonly streamAccum: number[];
   private nextEventIndex = 0;
   /** 화면 밖 스폰 반경 (뷰 크기에 맞춰 렌더 계층이 조정) */
@@ -364,7 +358,6 @@ export class SurvivorEngine {
     this.savePrevPositions();
 
     this.updateCommanderMovement(dt);
-    this.updateSlime(dt);
     this.updateSpawning(dt);
 
     this.rebuildHash();
@@ -437,8 +430,7 @@ export class SurvivorEngine {
       if (c.attackFlashSec <= 0 && c.windupSec <= 0) {
         c.facingAngle = Math.atan2(c.dirY, c.dirX);
       }
-      const slimeMul = this.faction.id === 'HIVE' && this.isOnSlime(c.x, c.y) ? 1.2 : 1;
-      const speed = c.def.moveSpeed * this.speedMul * slimeMul;
+      const speed = c.def.moveSpeed * this.speedMul;
       c.x += this.moveX * speed * dt;
       c.y += this.moveY * speed * dt;
       c.idleSec = 0;
@@ -489,47 +481,9 @@ export class SurvivorEngine {
 
   // ─────────────────────────── 진영 특성 ───────────────────────────
 
+  /** 노바 기동군 진영 특성 [포진]: 지휘관이 멈춰 서 있는 동안 활성 */
   private isTraitActive(): boolean {
-    switch (this.faction.id) {
-      case 'IRONCLAD':
-        return this.isEntrenched;
-      case 'HIVE':
-        return this.isOnSlime(this.commander.x, this.commander.y);
-      case 'LUMEN':
-        return this.commander.sinceHitSec >= SHIELD_REGEN_DELAY_SEC;
-    }
-  }
-
-  private updateSlime(dt: number): void {
-    for (let i = this.slime.length - 1; i >= 0; i -= 1) {
-      this.slime[i].lifeSec -= dt;
-      if (this.slime[i].lifeSec <= 0) {
-        this.slime.splice(i, 1);
-      }
-    }
-    if (this.faction.id !== 'HIVE') {
-      return;
-    }
-    this.slimeTimer -= dt;
-    if (this.slimeTimer <= 0 && this.commander.idleSec === 0) {
-      this.slimeTimer = 0.18;
-      if (this.slime.length >= MAX_SLIME) {
-        this.slime.shift();
-      }
-      this.slime.push({ x: this.commander.x, y: this.commander.y, lifeSec: SLIME_LIFE_SEC });
-    }
-  }
-
-  public isOnSlime(x: number, y: number): boolean {
-    const r2 = SLIME_RADIUS * SLIME_RADIUS;
-    for (let i = 0; i < this.slime.length; i += 1) {
-      const dx = this.slime[i].x - x;
-      const dy = this.slime[i].y - y;
-      if (dx * dx + dy * dy <= r2) {
-        return true;
-      }
-    }
-    return false;
+    return this.isEntrenched;
   }
 
   // ─────────────────────────── 분대 구성 ───────────────────────────
@@ -687,7 +641,6 @@ export class SurvivorEngine {
   private updateSquad(dt: number): void {
     const c = this.commander;
     const entrenched = this.isEntrenched;
-    const hive = this.faction.id === 'HIVE';
     const passive = this.commanderDef.passive;
     const moving = c.idleSec === 0;
     const rapid = 1 - 0.07 * this.moduleLevel('RAPID');
@@ -701,7 +654,6 @@ export class SurvivorEngine {
       const a = m.def.attack;
       const sq = this.getSquad(m.squadKey);
       const sqLevel = sq ? sq.level : 1;
-      const onSlime = hive && this.isOnSlime(m.x, m.y);
       const range = a.rangePx * rangeMul;
       const slot = this.slotOffsets[m.slotIndex] ?? { x: 0, y: 0 };
       const slotX = c.x + slot.x;
@@ -723,7 +675,7 @@ export class SurvivorEngine {
       m.moving = dist > 1.2 || c.moving;
       if (dist > 0.5) {
         const catchUp = dist > 40 ? 1.7 : 1;
-        const maxSpeed = m.def.moveSpeed * speedMul * catchUp * (onSlime ? 1.2 : 1);
+        const maxSpeed = m.def.moveSpeed * speedMul * catchUp;
         // 스프링 추종: 가까울수록 감속해 대형에 부드럽게 안착
         const speed = Math.min(maxSpeed, dist * 7);
         const stepLen = Math.min(dist, speed * dt);
@@ -759,7 +711,7 @@ export class SurvivorEngine {
       // 공격: 쿨다운 완료 + 표적 확인 → 예비동작 → 발동
       m.attackFlashSec = Math.max(0, m.attackFlashSec - dt);
       const gunnery = passive === 'GUNNERY' && (a.style === 'PROJECTILE' || a.style === 'PIERCE') ? 1.15 : 1;
-      const tempo = (onSlime ? 1.3 : 1) * gunnery;
+      const tempo = gunnery;
       m.cooldown -= dt * tempo;
       const cdFull = a.cooldownSec * rapid;
       const windup = attackWindupSec(cdFull);
@@ -1303,7 +1255,6 @@ export class SurvivorEngine {
 
   private updateEnemies(dt: number): void {
     const c = this.commander;
-    const hive = this.faction.id === 'HIVE';
     const despawnR = this.spawnRadius + 200;
     const despawn2 = despawnR * despawnR;
 
@@ -1362,9 +1313,8 @@ export class SurvivorEngine {
       if (!e.alive) {
         continue;
       }
-      const slow = hive && this.isOnSlime(e.x, e.y) ? 0.7 : 1;
-      e.x += v.x * slow * dt;
-      e.y += v.y * slow * dt;
+      e.x += v.x * dt;
+      e.y += v.y * dt;
       if (Math.abs(v.x) > 1) {
         e.facingX = v.x > 0 ? 1 : -1;
       }

@@ -1,4 +1,5 @@
-export type FactionId = 'IRONCLAD' | 'HIVE' | 'LUMEN';
+/** 플레이어 진영: 노바 기동군(NOVA TASKFORCE) 단일. 적응 군체·성휘 교단 개체는 적(survivor_enemies.json)으로 등장한다 */
+export type FactionId = 'IRONCLAD';
 
 /** AUTO: 스스로 가장 가까운 적을 조준 / FACING: 지휘관이 바라보는 방향으로 공격 */
 export type TargetingMode = 'AUTO' | 'FACING';
@@ -177,6 +178,8 @@ export interface EnemyDef {
   sprite: SpriteArchetype;
   scale: number;
   palette: FactionPalette;
+  /** QUEEN·NEST가 소환하는 하수인 (기본: mite) */
+  minionId?: string;
 }
 
 export interface WaveStream {
@@ -429,12 +432,6 @@ export interface ZoneState {
   dps: number;
   lifeSec: number;
   maxLifeSec: number;
-}
-
-export interface SlimePatch {
-  x: number;
-  y: number;
-  lifeSec: number;
 }
 
 export interface HudSnapshot {
