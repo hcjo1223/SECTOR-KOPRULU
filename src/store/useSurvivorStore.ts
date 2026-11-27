@@ -33,6 +33,7 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
 
   startRun: (faction, commanderId) => {
     const engine = new SurvivorEngine(faction, commanderId);
+    fastForwardFromUrl(engine);
     set((s) => ({
       screen: 'RUN',
       engine,
@@ -95,3 +96,34 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
     }
   },
 }));
+
+/**
+ * 디버그: URL에 ?skip=초 를 붙이면 런 시작 시 해당 시간만큼 빨리 감는다.
+ * (레벨업은 첫 선택지, 보급 상자는 즉시 확인. 지휘관은 무적 처리)
+ */
+function fastForwardFromUrl(engine: SurvivorEngine): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const skip = Number(new URLSearchParams(window.location.search).get('skip') ?? 0);
+  if (!Number.isFinite(skip) || skip <= 0) {
+    return;
+  }
+  const c = engine.commander;
+  const ticks = Math.floor(skip * 30);
+  for (let t = 0; t < ticks && engine.phase !== 'VICTORY'; t += 1) {
+    if (engine.phase === 'LEVEL_UP') {
+      engine.chooseOffer(0);
+      continue;
+    }
+    if (engine.phase === 'CHEST') {
+      engine.confirmChest();
+      continue;
+    }
+    c.hp = c.maxHp;
+    c.alive = true;
+    engine.setMoveInput(Math.cos(t / 150), Math.sin(t / 150));
+    engine.step(1);
+  }
+  engine.setMoveInput(0, 0);
+}

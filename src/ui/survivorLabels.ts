@@ -101,6 +101,8 @@ export function describeOffer(offer: LevelUpOffer, pool: readonly string[] = [])
     }
     case 'REINFORCE':
       return { tag: '증원', title: '결원 보충', body: `전사한 부대원 ${offer.missing}명을 모든 분대에 다시 채운다.` };
+    case 'OVERCHARGE':
+      return { tag: `과충전 ×${offer.stacks}`, title: '부대 과충전', body: '모든 슬롯이 최대치. 부대 전체 피해량 +3% (중첩).' };
     case 'RESUPPLY':
       return { tag: '긴급 보급', title: '전원 회복', body: '지휘관과 부대원 전원의 체력·보호막을 완전히 회복한다.' };
   }

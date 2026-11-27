@@ -1,3 +1,4 @@
+import { shellReduction, stepEnemyAI, type EnemyAIContext } from './EnemyBehaviors';
 import { assignSlots, buildSlotOffsets, capacityForRings, MAX_RINGS } from './Formation';
 import { getCommander, getEnemyDef, getFaction, getSquadUnitDef, getWaveTable } from './SurvivorCatalog';
 import { SpatialHash } from './SpatialHash';
@@ -10,11 +11,14 @@ import type {
   CommanderState,
   EffectKind,
   EffectState,
+  EliteAffix,
+  EnemyShotState,
   EnemyState,
   FactionDef,
   FactionId,
   FactionPalette,
   GemState,
+  HazardState,
   HudSnapshot,
   LevelUpOffer,
   MineState,
@@ -50,6 +54,17 @@ const SLIME_LIFE_SEC = 4;
 const SHIELD_REGEN_DELAY_SEC = 2.5;
 const GEM_MAGNET_SPEED = 240;
 const MINE_TRIGGER_PX = 9;
+const MAX_ENEMY_SHOTS = 260;
+const MAX_HAZARDS = 40;
+const ALL_AFFIXES: readonly EliteAffix[] = ['SWIFT', 'SPLIT', 'AURA', 'SHIELDED', 'VOLATILE'];
+
+export const AFFIX_LABEL: Record<EliteAffix, string> = {
+  SWIFT: '신속',
+  SPLIT: '분열',
+  AURA: '오라',
+  SHIELDED: '보호막',
+  VOLATILE: '폭발',
+};
 
 /** 결정적 의사난수 (테스트 재현성) */
 function mulberry32(seed: number): () => number {
@@ -64,7 +79,8 @@ function mulberry32(seed: number): () => number {
 }
 
 export function xpToNextLevel(level: number): number {
-  return 3 + level * 3;
+  // 후반으로 갈수록 가파르게: 눈덩이 성장 억제
+  return 3 + level * 3 + Math.floor((level * level) / 12);
 }
 
 /** 분대 레벨 = 정원 (레벨 + 1명) */
@@ -100,12 +116,18 @@ export class SurvivorEngine {
   public readonly zones: ZoneState[] = [];
   public readonly effects: EffectState[] = [];
   public readonly slime: SlimePatch[] = [];
+  public readonly enemyShots: EnemyShotState[] = [];
+  public readonly hazards: HazardState[] = [];
 
   public slotOffsets: Vec2[] = [];
   public offers: LevelUpOffer[] = [];
   public chestResult: ChestResult | null = null;
+  /** HUD에 체력바를 표시할 현재 보스 (중간 보스 포함) */
   public boss: EnemyState | null = null;
+  public finalBoss: EnemyState | null = null;
   public bossSpawned = false;
+  public banner: string | null = null;
+  public overchargeStacks = 0;
 
   private readonly rng: () => number;
   private readonly hash = new SpatialHash(32);
@@ -122,6 +144,8 @@ export class SurvivorEngine {
   private nextEventIndex = 0;
   /** 화면 밖 스폰 반경 (뷰 크기에 맞춰 렌더 계층이 조정) */
   private spawnRadius = 300;
+  private bannerSec = 0;
+  private readonly ai: EnemyAIContext;
 
   constructor(factionId: FactionId, commanderId?: string, seed: number = Date.now()) {
     this.faction = getFaction(factionId);
@@ -140,6 +164,7 @@ export class SurvivorEngine {
       idleSec: 0,
     };
 
+    this.ai = this.makeAIContext();
     this.addSquad(cd.startingSquad);
     for (const m of this.squad) {
       const o = this.slotOffsets[m.slotIndex];
@@ -185,6 +210,10 @@ export class SurvivorEngine {
 
   public get speedMul(): number {
     return (1 + 0.06 * this.moduleLevel('MOBILITY')) * (this.commanderDef.passive === 'VANGUARD' ? 1.08 : 1);
+  }
+
+  public get overchargeMul(): number {
+    return 1 + 0.03 * this.overchargeStacks;
   }
 
   public moduleLevel(id: ModuleId): number {
@@ -277,6 +306,8 @@ export class SurvivorEngine {
       squadCount: this.squad.length,
       traitActive: this.isTraitActive(),
       bossAlive: !!this.boss && this.boss.alive,
+      bossName: this.boss ? this.boss.def.name : '',
+      banner: this.banner,
       bossHp: this.boss ? Math.max(0, this.boss.hp) : 0,
       bossMaxHp: this.boss ? this.boss.maxHp : 0,
       squads: this.squads.map((s) => ({
@@ -335,6 +366,8 @@ export class SurvivorEngine {
     this.updateProjectiles(dt);
     this.updateMines(dt);
     this.updateZones(dt);
+    this.updateEnemyShots(dt);
+    this.updateHazards(dt);
 
     this.cleanupEnemies();
     this.updatePickups(dt);
@@ -342,12 +375,18 @@ export class SurvivorEngine {
     this.updateReinforcements(dt);
     this.updateEffects(dt);
     this.cleanupSquad();
+    if (this.bannerSec > 0) {
+      this.bannerSec -= dt;
+      if (this.bannerSec <= 0) {
+        this.banner = null;
+      }
+    }
 
     if (!this.commander.alive) {
       this.phase = 'DEFEAT';
       return;
     }
-    if (this.bossSpawned && this.boss && !this.boss.alive) {
+    if (this.bossSpawned && this.finalBoss && !this.finalBoss.alive) {
       this.phase = 'VICTORY';
       return;
     }
@@ -405,7 +444,7 @@ export class SurvivorEngine {
     if (!target) {
       return;
     }
-    const dmg = a.damage * (1 + 0.1 * this.moduleLevel('CORE'));
+    const dmg = a.damage * (1 + 0.1 * this.moduleLevel('CORE')) * this.overchargeMul;
     this.spawnProjectile(c.x, c.y, target.x - c.x, target.y - c.y, a, dmg, a.rangePx, this.paletteFor(c.def).accent);
     c.cooldown = a.cooldownSec;
   }
@@ -614,7 +653,7 @@ export class SurvivorEngine {
     const moving = c.idleSec === 0;
     const rapid = 1 - 0.07 * this.moduleLevel('RAPID');
     const rangeMul = (1 + 0.08 * this.moduleLevel('SCOPE')) * (entrenched ? 1.25 : 1);
-    const coreMul = 1 + 0.1 * this.moduleLevel('CORE');
+    const coreMul = (1 + 0.1 * this.moduleLevel('CORE')) * this.overchargeMul;
     const critChance = 0.05 * this.moduleLevel('SCOPE');
     const speedMul = this.speedMul;
 
@@ -725,7 +764,7 @@ export class SurvivorEngine {
         if (!target) {
           return false;
         }
-        this.damageEnemy(target, dmg, a.bonusVsElite ?? 1, a.executePct ?? 0);
+        this.damageEnemy(target, dmg, a.bonusVsElite ?? 1, a.executePct ?? 0, m.x, m.y);
         const ang = Math.atan2(target.y - m.y, target.x - m.x);
         if (a.knockbackPx && !target.isBoss) {
           const kb = a.knockbackPx * (target.isElite ? 0.4 : 1);
@@ -783,7 +822,7 @@ export class SurvivorEngine {
         let fromY = m.y;
         let cur: EnemyState | null = first;
         for (let k = 0; k <= jumps && cur; k += 1) {
-          this.damageEnemy(cur, dmg, a.bonusVsElite ?? 1, 0);
+          this.damageEnemy(cur, dmg, a.bonusVsElite ?? 1, 0, fromX, fromY);
           hit.push(cur.id);
           this.addEffect('CHAIN', fromX, fromY, 0, 0, 0, 0.18, '#9fe8ff', cur.x, cur.y);
           fromX = cur.x;
@@ -889,23 +928,90 @@ export class SurvivorEngine {
       const ev = events[this.nextEventIndex];
       this.nextEventIndex += 1;
       const c = this.commander;
-      if (ev.kind === 'ENCIRCLE') {
-        const r = this.spawnRadius * 0.7;
-        for (let i = 0; i < ev.count; i += 1) {
-          const ang = (i / ev.count) * Math.PI * 2;
-          this.spawnEnemy(ev.enemyId, c.x + Math.cos(ang) * r, c.y + Math.sin(ang) * r, false, false);
+      switch (ev.kind) {
+        case 'ENCIRCLE': {
+          const r = this.spawnRadius * 0.7;
+          for (let i = 0; i < ev.count; i += 1) {
+            const ang = (i / ev.count) * Math.PI * 2;
+            this.spawnEnemy(ev.enemyId, c.x + Math.cos(ang) * r, c.y + Math.sin(ang) * r, false, false);
+          }
+          this.announce('포위 경보!');
+          break;
         }
-      } else if (ev.kind === 'ELITE') {
-        for (let i = 0; i < ev.count; i += 1) {
+        case 'ELITE':
+          for (let i = 0; i < ev.count; i += 1) {
+            const p = this.pickSpawnPoint();
+            this.spawnEnemy(ev.enemyId, p.x, p.y, true, false);
+          }
+          break;
+        case 'CROSSING':
+          this.spawnCrossing(ev.enemyId, ev.count);
+          this.announce('횡단 무리 접근!');
+          break;
+        case 'ACID':
+          for (let i = 0; i < ev.count; i += 1) {
+            const a = this.rng() * Math.PI * 2;
+            const r = 30 + this.rng() * 120;
+            this.addHazard(c.x + Math.cos(a) * r, c.y + Math.sin(a) * r, 26 + this.rng() * 10, 1.2, 12, 9, 0, '#9be04a');
+          }
+          this.announce('산성 지대 발생!');
+          break;
+        case 'NEST':
+          for (let i = 0; i < ev.count; i += 1) {
+            const a = Math.atan2(c.dirY, c.dirX) + (this.rng() - 0.5) * 1.6;
+            const r = this.spawnRadius * 0.55;
+            this.spawnEnemy(ev.enemyId, c.x + Math.cos(a) * r, c.y + Math.sin(a) * r, false, false);
+          }
+          this.announce('둥지 출현: 파괴하지 않으면 무리가 계속 나온다');
+          break;
+        case 'MINIBOSS':
+        case 'BOSS': {
           const p = this.pickSpawnPoint();
-          this.spawnEnemy(ev.enemyId, p.x, p.y, true, false);
+          const b = this.spawnEnemy(ev.enemyId, p.x, p.y, false, true);
+          if (b.behavior === 'SPIRE') {
+            const a = Math.atan2(c.dirY, c.dirX);
+            b.x = b.px = c.x + Math.cos(a) * this.spawnRadius * 0.6;
+            b.y = b.py = c.y + Math.sin(a) * this.spawnRadius * 0.6;
+          }
+          this.boss = b;
+          if (ev.kind === 'BOSS') {
+            b.isFinalBoss = true;
+            this.finalBoss = b;
+            this.bossSpawned = true;
+          }
+          this.announce(`${ev.kind === 'BOSS' ? '최종 보스' : '중간 보스'}: ${b.def.name}`);
+          break;
         }
-      } else {
-        const p = this.pickSpawnPoint();
-        this.boss = this.spawnEnemy(ev.enemyId, p.x, p.y, false, true);
-        this.bossSpawned = true;
       }
     }
+  }
+
+  /** 화면 한쪽 바깥에서 반대편으로 일직선 횡단하는 무리 */
+  private spawnCrossing(enemyId: string, count: number): void {
+    const c = this.commander;
+    const a = this.rng() * Math.PI * 2;
+    const dirX = -Math.cos(a);
+    const dirY = -Math.sin(a);
+    const startX = c.x + Math.cos(a) * this.spawnRadius;
+    const startY = c.y + Math.sin(a) * this.spawnRadius;
+    const perpX = -dirY;
+    const perpY = dirX;
+    const width = this.spawnRadius * 0.9;
+    for (let i = 0; i < count; i += 1) {
+      const off = (i / Math.max(1, count - 1) - 0.5) * width * 2;
+      const back = this.rng() * 30;
+      const e = this.spawnEnemy(enemyId, startX + perpX * off - dirX * back, startY + perpY * off - dirY * back, false, false);
+      e.behavior = 'LINE';
+      e.dirX = dirX;
+      e.dirY = dirY;
+      e.speed = Math.max(e.speed, 40) * 1.4;
+      e.lifeSec = (this.spawnRadius * 2.4) / e.speed;
+    }
+  }
+
+  public announce(text: string): void {
+    this.banner = text;
+    this.bannerSec = 3;
   }
 
   /** 화면 밖 원형 경계. 이동 중이면 진행 방향 앞쪽에 가중치를 둔다. */
@@ -923,8 +1029,17 @@ export class SurvivorEngine {
   private spawnEnemy(enemyId: string, x: number, y: number, elite: boolean, boss: boolean): EnemyState {
     const def = getEnemyDef(enemyId);
     const hpScale = 1 + this.waves.hpScalePerMinute * (this.elapsedSec / 60);
-    const eliteMul = elite ? 6 : 1;
+    const eliteMul = elite ? 5 : 1;
     const hp = boss ? def.hp : def.hp * hpScale * eliteMul;
+    const affixes: EliteAffix[] = [];
+    if (elite) {
+      const n = this.elapsedSec >= 300 ? 2 : 1;
+      const pool = [...ALL_AFFIXES];
+      for (let i = 0; i < n; i += 1) {
+        affixes.push(pool.splice(Math.floor(this.rng() * pool.length), 1)[0]);
+      }
+    }
+    const shielded = affixes.includes('SHIELDED');
     const e: EnemyState = {
       id: this.nextId++,
       def,
@@ -935,18 +1050,148 @@ export class SurvivorEngine {
       hp,
       maxHp: hp,
       radius: def.radius * (elite ? 1.35 : 1),
-      speed: def.speed * (elite ? 1.1 : 1) * (0.9 + this.rng() * 0.2),
+      speed: def.speed * (elite ? 1.1 : 1) * (affixes.includes('SWIFT') ? 1.5 : 1) * (boss ? 1 : 0.9 + this.rng() * 0.2),
       damage: def.damage * (elite ? 1.5 : 1),
       scale: def.scale * (elite ? 1.4 : 1),
       contactCd: 0,
       hitFlashSec: 0,
       isElite: elite,
       isBoss: boss,
+      isFinalBoss: false,
       alive: true,
+      silent: false,
       facingX: 1,
+      behavior: def.behavior ?? 'CHASE',
+      affixes,
+      shield: shielded ? hp * 0.5 : 0,
+      maxShield: shielded ? hp * 0.5 : 0,
+      sinceHitSec: 99,
+      auraBuffed: false,
+      mode: 'CHASE',
+      modeSec: 0,
+      dirX: 1,
+      dirY: 0,
+      attackTimer: 1 + this.rng() * 2,
+      spawnTimer: 1.5,
+      dashCount: 0,
+      ageSec: 0,
+      lifeSec: 0,
     };
     this.enemies.push(e);
     return e;
+  }
+
+  private makeAIContext(): EnemyAIContext {
+    return {
+      commander: this.commander,
+      rng: () => this.rng(),
+      nearestAllyDist: (x, y) => {
+        let best = Math.hypot(this.commander.x - x, this.commander.y - y);
+        for (const m of this.squad) {
+          const d = Math.hypot(m.x - x, m.y - y);
+          if (d < best) {
+            best = d;
+          }
+        }
+        return best;
+      },
+      spawnMinion: (id, x, y) => (this.enemies.length < this.waves.maxEnemies + 80 ? this.spawnEnemy(id, x, y, false, false) : null),
+      fireShot: (x, y, dx, dy, speed, damage, radius, color) => {
+        if (this.enemyShots.length >= MAX_ENEMY_SHOTS) {
+          return;
+        }
+        const l = Math.hypot(dx, dy) || 1;
+        this.enemyShots.push({ x, y, px: x, py: y, vx: (dx / l) * speed, vy: (dy / l) * speed, damage, radius, lifeSec: 4, color, alive: true });
+      },
+      addHazard: (x, y, r, arm, life, dps, burst, color) => this.addHazard(x, y, r, arm, life, dps, burst, color),
+      shieldEnemiesNear: (x, y, r, amount) => {
+        for (const o of this.enemies) {
+          if (o.alive && !o.isBoss && Math.hypot(o.x - x, o.y - y) <= r) {
+            o.maxShield = Math.max(o.maxShield, amount);
+            o.shield = Math.min(o.maxShield, o.shield + amount);
+          }
+        }
+      },
+      effect: (kind, x, y, radius, life, color, x2, y2) => this.addEffect(kind, x, y, 0, radius, 0, life, color, x2 ?? x, y2 ?? y),
+      announce: (text) => this.announce(text),
+    };
+  }
+
+  private addHazard(x: number, y: number, radius: number, armSec: number, lifeSec: number, dps: number, burst: number, color: string): void {
+    if (this.hazards.length >= MAX_HAZARDS) {
+      this.hazards.shift();
+    }
+    this.hazards.push({ x, y, radius, armSec, maxArmSec: armSec, lifeSec, dps, burst, burstDone: burst <= 0, color });
+  }
+
+  private damageAlliesInRadius(x: number, y: number, r: number, dmg: number): void {
+    const hit = (a: Actor): void => {
+      if (a.alive && Math.hypot(a.x - x, a.y - y) <= r + a.radius) {
+        this.damageAlly(a, dmg);
+      }
+    };
+    hit(this.commander);
+    for (const m of this.squad) {
+      hit(m);
+    }
+  }
+
+  private updateHazards(dt: number): void {
+    let w = 0;
+    for (let i = 0; i < this.hazards.length; i += 1) {
+      const h = this.hazards[i];
+      if (h.armSec > 0) {
+        h.armSec -= dt;
+        this.hazards[w++] = h;
+        continue;
+      }
+      if (!h.burstDone) {
+        h.burstDone = true;
+        this.damageAlliesInRadius(h.x, h.y, h.radius, h.burst);
+      }
+      if (h.dps > 0) {
+        this.damageAlliesInRadius(h.x, h.y, h.radius, h.dps * dt);
+      }
+      h.lifeSec -= dt;
+      if (h.lifeSec > 0) {
+        this.hazards[w++] = h;
+      }
+    }
+    this.hazards.length = w;
+  }
+
+  private updateEnemyShots(dt: number): void {
+    let w = 0;
+    const c = this.commander;
+    for (let i = 0; i < this.enemyShots.length; i += 1) {
+      const p = this.enemyShots[i];
+      p.px = p.x;
+      p.py = p.y;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.lifeSec -= dt;
+      const tryHit = (a: Actor): boolean => {
+        if (!a.alive) {
+          return false;
+        }
+        const r = a.radius + p.radius;
+        const dx = a.x - p.x;
+        const dy = a.y - p.y;
+        if (dx * dx + dy * dy <= r * r) {
+          this.damageAlly(a, p.damage);
+          return true;
+        }
+        return false;
+      };
+      let hit = tryHit(c);
+      for (let k = 0; k < this.squad.length && !hit; k += 1) {
+        hit = tryHit(this.squad[k]);
+      }
+      if (!hit && p.lifeSec > 0) {
+        this.enemyShots[w++] = p;
+      }
+    }
+    this.enemyShots.length = w;
   }
 
   private updateEnemies(dt: number): void {
@@ -954,6 +1199,22 @@ export class SurvivorEngine {
     const hive = this.faction.id === 'HIVE';
     const despawnR = this.spawnRadius + 200;
     const despawn2 = despawnR * despawnR;
+
+    // 오라 엘리트: 주변 적 피해 30% 감소
+    for (const e of this.enemies) {
+      e.auraBuffed = false;
+    }
+    for (const e of this.enemies) {
+      if (e.alive && e.affixes.includes('AURA')) {
+        const cand = this.hash.query(e.x, e.y, 60, this.scratch2);
+        for (let k = 0; k < cand.length; k += 1) {
+          const o = this.enemies[cand[k]];
+          if (o && o !== e && Math.hypot(o.x - e.x, o.y - e.y) <= 56) {
+            o.auraBuffed = true;
+          }
+        }
+      }
+    }
 
     for (let i = 0; i < this.enemies.length; i += 1) {
       const e = this.enemies[i];
@@ -963,26 +1224,39 @@ export class SurvivorEngine {
       e.contactCd -= dt;
       e.hitFlashSec = Math.max(0, e.hitFlashSec - dt);
 
-      let dx = c.x - e.x;
-      let dy = c.y - e.y;
-      const d2c = dx * dx + dy * dy;
-      if (d2c > despawn2 && !e.isBoss && !e.isElite) {
+      e.sinceHitSec += dt;
+      if (e.maxShield > 0 && e.sinceHitSec > 3 && e.shield < e.maxShield) {
+        e.shield = Math.min(e.maxShield, e.shield + e.maxShield * 0.2 * dt);
+      }
+
+      const dxc = c.x - e.x;
+      const dyc = c.y - e.y;
+      const d2c = dxc * dxc + dyc * dyc;
+      const anchored = e.isBoss || e.isElite || e.behavior === 'LINE' || e.behavior === 'NEST';
+      if (d2c > despawn2 && !anchored) {
         const p = this.pickSpawnPoint();
         e.x = e.px = p.x;
         e.y = e.py = p.y;
         continue;
       }
-      const dc = Math.sqrt(d2c) || 1;
-      dx /= dc;
-      dy /= dc;
+      if (e.behavior === 'NEST' && d2c > despawn2 * 3) {
+        e.alive = false;
+        e.silent = true;
+        continue;
+      }
+      const v = stepEnemyAI(e, this.ai, dt);
+      if (!e.alive) {
+        continue;
+      }
       const slow = hive && this.isOnSlime(e.x, e.y) ? 0.7 : 1;
-      e.x += dx * e.speed * slow * dt;
-      e.y += dy * e.speed * slow * dt;
-      if (Math.abs(dx) > 0.1) {
-        e.facingX = dx > 0 ? 1 : -1;
+      e.x += v.x * slow * dt;
+      e.y += v.y * slow * dt;
+      if (Math.abs(v.x) > 1) {
+        e.facingX = v.x > 0 ? 1 : -1;
       }
 
-      // 군집 분리 (반경 가중)
+      // 군집 분리 (반경 가중). 고정형(둥지·포자 탑)은 밀리지 않는다.
+      const immovable = e.behavior === 'NEST' || e.behavior === 'SPIRE';
       const cand = this.hash.query(e.x, e.y, e.radius + 20, this.scratch2);
       for (let k = 0; k < cand.length; k += 1) {
         const j = cand[k];
@@ -997,9 +1271,9 @@ export class SurvivorEngine {
         const oy = e.y - o.y;
         const minD = e.radius + o.radius;
         const d2 = ox * ox + oy * oy;
-        if (d2 < minD * minD && d2 > 0.0001) {
+        if (!immovable && d2 < minD * minD && d2 > 0.0001) {
           const d = Math.sqrt(d2);
-          const w = o.radius / (e.radius + o.radius);
+          const w = o.behavior === 'NEST' || o.behavior === 'SPIRE' ? 1 : o.radius / (e.radius + o.radius);
           const push = (minD - d) * w * 0.6;
           e.x += (ox / d) * push;
           e.y += (oy / d) * push;
@@ -1007,10 +1281,14 @@ export class SurvivorEngine {
       }
 
       // 아군과 충돌: 부대원은 방벽 역할, 접촉 시 피해
-      this.collideEnemyWithAlly(e, c, 0, 0);
-      for (let s = 0; s < this.squad.length; s += 1) {
-        const m = this.squad[s];
-        this.collideEnemyWithAlly(e, m, e.isBoss ? 0.6 : 0.15, m.def.reflectPct ?? 0);
+      if (e.damage > 0) {
+        this.collideEnemyWithAlly(e, c, immovable ? 1 : 0, 0);
+        for (let s = 0; s < this.squad.length; s += 1) {
+          const m = this.squad[s];
+          this.collideEnemyWithAlly(e, m, immovable ? 1 : e.isBoss ? 0.6 : 0.15, m.def.reflectPct ?? 0);
+        }
+      } else {
+        this.collideEnemyWithAlly(e, c, 1, 0);
       }
     }
   }
@@ -1026,7 +1304,7 @@ export class SurvivorEngine {
     if (d2 >= (minD + 1.5) * (minD + 1.5)) {
       return;
     }
-    if (e.contactCd <= 0) {
+    if (e.contactCd <= 0 && e.damage > 0) {
       this.damageAlly(a, e.damage);
       e.contactCd = e.def.contactCooldownSec;
       if (reflectPct > 0) {
@@ -1047,10 +1325,14 @@ export class SurvivorEngine {
 
   private cleanupEnemies(): void {
     let w = 0;
-    for (let i = 0; i < this.enemies.length; i += 1) {
+    const n = this.enemies.length;
+    for (let i = 0; i < n; i += 1) {
       const e = this.enemies[i];
       if (e.alive) {
         this.enemies[w++] = e;
+        continue;
+      }
+      if (e.silent) {
         continue;
       }
       this.kills += 1;
@@ -1058,9 +1340,28 @@ export class SurvivorEngine {
       if (e.def.xp > 0) {
         this.dropGem(e.x, e.y, e.def.xp * (e.isElite ? 8 : 1));
       }
-      if (e.isElite) {
+      if (e.isElite || e.behavior === 'NEST') {
         this.chests.push({ id: this.nextId++, x: e.x, y: e.y, alive: true });
       }
+      if (e.isBoss && !e.isFinalBoss) {
+        this.chests.push({ id: this.nextId++, x: e.x - 8, y: e.y, alive: true });
+        this.chests.push({ id: this.nextId++, x: e.x + 8, y: e.y, alive: true });
+        this.announce(`${e.def.name} 격파! 보급 상자 2개`);
+      }
+      const splits = e.behavior === 'SPLITTER' ? 3 : 0;
+      const affixSplits = e.affixes.includes('SPLIT') ? 4 : 0;
+      for (let k = 0; k < splits + affixSplits; k += 1) {
+        const a = (k / (splits + affixSplits)) * Math.PI * 2;
+        this.spawnEnemy('mite', e.x + Math.cos(a) * 6, e.y + Math.sin(a) * 6, false, false);
+      }
+      if (e.affixes.includes('VOLATILE')) {
+        this.addHazard(e.x, e.y, 40, 0.7, 0.05, 0, 28, '#ff8a3a');
+        this.addEffect('TELE_CIRCLE', e.x, e.y, 0, 40, 0, 0.7, '#ff8a3a');
+      }
+    }
+    // 루프 중 분열로 추가된 개체 보존
+    for (let i = n; i < this.enemies.length; i += 1) {
+      this.enemies[w++] = this.enemies[i];
     }
     this.enemies.length = w;
   }
@@ -1125,7 +1426,7 @@ export class SurvivorEngine {
           p.alive = false;
           break;
         }
-        this.damageEnemy(e, p.damage, p.bonusVsElite, p.executePct);
+        this.damageEnemy(e, p.damage, p.bonusVsElite, p.executePct, p.px, p.py);
         p.hitIds.push(e.id);
         p.pierceLeft -= 1;
         if (p.pierceLeft < 0) {
@@ -1192,7 +1493,7 @@ export class SurvivorEngine {
         const dx = e.x - z.x;
         const dy = e.y - z.y;
         if (dx * dx + dy * dy <= reach * reach) {
-          e.hp -= z.dps * dt;
+          e.hp -= z.dps * dt * (e.auraBuffed ? 0.7 : 1);
           if (e.hp <= 0) {
             e.alive = false;
           }
@@ -1207,11 +1508,22 @@ export class SurvivorEngine {
 
   // ─────────────────────────── 피해 ───────────────────────────
 
-  private damageEnemy(e: EnemyState, dmg: number, bonusVsElite: number, executePct: number): void {
+  private damageEnemy(e: EnemyState, dmg: number, bonusVsElite: number, executePct: number, srcX = e.x, srcY = e.y): void {
     if (!e.alive) {
       return;
     }
-    e.hp -= e.isElite || e.isBoss ? dmg * bonusVsElite : dmg;
+    let amount = e.isElite || e.isBoss ? dmg * bonusVsElite : dmg;
+    if (e.auraBuffed) {
+      amount *= 0.7;
+    }
+    amount *= shellReduction(e, this.commander, srcX, srcY);
+    e.sinceHitSec = 0;
+    if (e.shield > 0) {
+      const absorbed = Math.min(e.shield, amount);
+      e.shield -= absorbed;
+      amount -= absorbed;
+    }
+    e.hp -= amount;
     e.hitFlashSec = 0.1;
     if (executePct > 0 && !e.isBoss && e.hp > 0 && e.hp / e.maxHp <= executePct) {
       e.hp = 0;
@@ -1233,7 +1545,7 @@ export class SurvivorEngine {
       const dx = e.x - x;
       const dy = e.y - y;
       if (dx * dx + dy * dy <= reach * reach) {
-        this.damageEnemy(e, dmg, 1, 0);
+        this.damageEnemy(e, dmg, 1, 0, x, y);
         hits += 1;
       }
     }
@@ -1264,7 +1576,7 @@ export class SurvivorEngine {
         continue;
       }
       if (d < e.radius + 2 || (dx * dirX + dy * dirY) / (d || 1) >= cosHalf) {
-        this.damageEnemy(e, dmg, 1, 0);
+        this.damageEnemy(e, dmg, 1, 0, x, y);
         hits += 1;
       }
     }
@@ -1454,7 +1766,7 @@ export class SurvivorEngine {
       const fromId = this.evolveSquad(ready);
       return { kind: 'EVOLVE', fromId, intoId: ready.def.id };
     }
-    const offer = this.rollOffers(1).find((o) => o.kind !== 'RESUPPLY');
+    const offer = this.rollOffers(1).find((o) => o.kind !== 'RESUPPLY' && o.kind !== 'OVERCHARGE');
     if (offer) {
       this.applyOffer(offer);
       return { kind: 'UPGRADE', offer };
@@ -1566,6 +1878,10 @@ export class SurvivorEngine {
       picked.push(pool[idx].offer);
       pool.splice(idx, 1);
     }
+    // 모든 슬롯이 최대치면 과충전(무한 성장)과 긴급 보급으로 채운다
+    if (picked.length < count) {
+      picked.push({ kind: 'OVERCHARGE', stacks: this.overchargeStacks + 1 });
+    }
     while (picked.length < count) {
       picked.push({ kind: 'RESUPPLY' });
     }
@@ -1610,6 +1926,9 @@ export class SurvivorEngine {
       }
       case 'REINFORCE':
         this.reinforceAll();
+        return;
+      case 'OVERCHARGE':
+        this.overchargeStacks += 1;
         return;
       case 'RESUPPLY': {
         const c = this.commander;

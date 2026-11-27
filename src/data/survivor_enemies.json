@@ -70,7 +70,7 @@
   {
     "id": "matron",
     "name": "블라이트 모체",
-    "hp": 3500,
+    "hp": 9000,
     "damage": 35,
     "contactCooldownSec": 1.0,
     "speed": 24,
@@ -82,6 +82,151 @@
       "primary": "#8a2a4a",
       "secondary": "#3e1022",
       "accent": "#ffd040"
+    },
+    "behavior": "MATRON"
+  },
+  {
+    "id": "charger",
+    "name": "블라이트 돌진충",
+    "behavior": "CHARGER",
+    "hp": 40,
+    "damage": 9,
+    "contactCooldownSec": 0.8,
+    "speed": 30,
+    "radius": 6,
+    "xp": 3,
+    "sprite": "CHARGER",
+    "scale": 1.1,
+    "palette": {
+      "primary": "#b0503a",
+      "secondary": "#5a2418",
+      "accent": "#ffd070"
+    }
+  },
+  {
+    "id": "spitter_e",
+    "name": "블라이트 포자충",
+    "behavior": "SPITTER",
+    "hp": 30,
+    "damage": 6,
+    "contactCooldownSec": 1.0,
+    "speed": 32,
+    "radius": 5,
+    "xp": 3,
+    "sprite": "SPORER",
+    "scale": 1,
+    "palette": {
+      "primary": "#6a8a40",
+      "secondary": "#34461c",
+      "accent": "#c8e870"
+    }
+  },
+  {
+    "id": "splitter",
+    "name": "블라이트 분열충",
+    "behavior": "SPLITTER",
+    "hp": 55,
+    "damage": 8,
+    "contactCooldownSec": 1.0,
+    "speed": 27,
+    "radius": 7,
+    "xp": 4,
+    "sprite": "SPLITTER",
+    "scale": 1.1,
+    "palette": {
+      "primary": "#a04a6a",
+      "secondary": "#4e2032",
+      "accent": "#ff9ab0"
+    }
+  },
+  {
+    "id": "bomber",
+    "name": "블라이트 자폭충",
+    "behavior": "BOMBER",
+    "hp": 24,
+    "damage": 16,
+    "contactCooldownSec": 1.0,
+    "speed": 50,
+    "radius": 5,
+    "xp": 3,
+    "sprite": "BOMBER",
+    "scale": 1,
+    "palette": {
+      "primary": "#7a4a2a",
+      "secondary": "#3a2010",
+      "accent": "#ff8a3a"
+    }
+  },
+  {
+    "id": "shelled",
+    "name": "블라이트 갑각충",
+    "behavior": "SHELLED",
+    "hp": 90,
+    "damage": 12,
+    "contactCooldownSec": 1.1,
+    "speed": 25,
+    "radius": 7,
+    "xp": 5,
+    "sprite": "SHELL",
+    "scale": 1.2,
+    "palette": {
+      "primary": "#5a5a6a",
+      "secondary": "#2a2a34",
+      "accent": "#c0c8d8"
+    }
+  },
+  {
+    "id": "nest",
+    "name": "블라이트 둥지",
+    "behavior": "NEST",
+    "hp": 420,
+    "damage": 0,
+    "contactCooldownSec": 1.0,
+    "speed": 0,
+    "radius": 12,
+    "xp": 15,
+    "sprite": "NEST",
+    "scale": 1.8,
+    "palette": {
+      "primary": "#7a3a4a",
+      "secondary": "#3a1622",
+      "accent": "#f06070"
+    }
+  },
+  {
+    "id": "queen",
+    "name": "파쇄 여왕",
+    "behavior": "QUEEN",
+    "hp": 1800,
+    "damage": 24,
+    "contactCooldownSec": 0.9,
+    "speed": 38,
+    "radius": 13,
+    "xp": 60,
+    "sprite": "QUEEN",
+    "scale": 2.2,
+    "palette": {
+      "primary": "#9a3030",
+      "secondary": "#481414",
+      "accent": "#ffcf4a"
+    }
+  },
+  {
+    "id": "spire",
+    "name": "포자 탑",
+    "behavior": "SPIRE",
+    "hp": 5000,
+    "damage": 9,
+    "contactCooldownSec": 1.0,
+    "speed": 0,
+    "radius": 15,
+    "xp": 90,
+    "sprite": "SPIRE",
+    "scale": 2.4,
+    "palette": {
+      "primary": "#5a7a30",
+      "secondary": "#2a3a14",
+      "accent": "#e0f070"
     }
   }
 ]

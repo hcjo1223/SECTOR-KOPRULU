@@ -33,7 +33,15 @@ export type SpriteArchetype =
   | 'CRAWLER'
   | 'BLOATER'
   | 'BRUTE'
-  | 'MATRON';
+  | 'MATRON'
+  | 'CHARGER'
+  | 'SPORER'
+  | 'SPLITTER'
+  | 'BOMBER'
+  | 'SHELL'
+  | 'NEST'
+  | 'QUEEN'
+  | 'SPIRE';
 
 export interface AttackProfile {
   targeting: TargetingMode;
@@ -135,9 +143,30 @@ export interface FactionDef {
   palette: FactionPalette;
 }
 
+/**
+ * CHASE 직진 / LINE 고정 방향 횡단 / CHARGER 조준 후 돌진 / SPITTER 거리 유지 원거리
+ * SPLITTER 사망 시 분열 / BOMBER 접근 후 자폭 / SHELLED 정면 피해 감소 / NEST 고정 생산
+ * QUEEN·SPIRE 중간 보스 / MATRON 최종 보스
+ */
+export type EnemyBehavior =
+  | 'CHASE'
+  | 'LINE'
+  | 'CHARGER'
+  | 'SPITTER'
+  | 'SPLITTER'
+  | 'BOMBER'
+  | 'SHELLED'
+  | 'NEST'
+  | 'QUEEN'
+  | 'SPIRE'
+  | 'MATRON';
+
+export type EliteAffix = 'SWIFT' | 'SPLIT' | 'AURA' | 'SHIELDED' | 'VOLATILE';
+
 export interface EnemyDef {
   id: string;
   name: string;
+  behavior?: EnemyBehavior;
   hp: number;
   damage: number;
   contactCooldownSec: number;
@@ -157,7 +186,7 @@ export interface WaveStream {
   rateEnd: number;
 }
 
-export type WaveEventKind = 'ELITE' | 'ENCIRCLE' | 'BOSS';
+export type WaveEventKind = 'ELITE' | 'ENCIRCLE' | 'BOSS' | 'MINIBOSS' | 'CROSSING' | 'ACID' | 'NEST';
 
 export interface WaveEvent {
   atSec: number;
@@ -180,6 +209,7 @@ export type LevelUpOffer =
   | { kind: 'NEW_MODULE'; moduleId: ModuleId }
   | { kind: 'MODULE_LEVEL'; moduleId: ModuleId; nextLevel: number }
   | { kind: 'REINFORCE'; missing: number }
+  | { kind: 'OVERCHARGE'; stacks: number }
   | { kind: 'RESUPPLY' };
 
 export type ChestResult =
@@ -260,8 +290,56 @@ export interface EnemyState {
   hitFlashSec: number;
   isElite: boolean;
   isBoss: boolean;
+  /** 최종 보스 여부 (처치 시 승리) */
+  isFinalBoss: boolean;
   alive: boolean;
+  /** 경험치·처치 수 없이 조용히 제거 (횡단 무리 이탈, 자폭 등) */
+  silent: boolean;
   facingX: number;
+  behavior: EnemyBehavior;
+  affixes: EliteAffix[];
+  shield: number;
+  maxShield: number;
+  sinceHitSec: number;
+  auraBuffed: boolean;
+  /** 행동 상태 머신 */
+  mode: 'CHASE' | 'AIM' | 'DASH' | 'REST' | 'FUSE';
+  modeSec: number;
+  dirX: number;
+  dirY: number;
+  attackTimer: number;
+  spawnTimer: number;
+  dashCount: number;
+  ageSec: number;
+  lifeSec: number;
+}
+
+export interface EnemyShotState {
+  x: number;
+  y: number;
+  px: number;
+  py: number;
+  vx: number;
+  vy: number;
+  damage: number;
+  radius: number;
+  lifeSec: number;
+  color: string;
+  alive: boolean;
+}
+
+/** 적이 만든 위험 지대: armSec 동안 예고 후 burst 1회 + dps 지속 피해 */
+export interface HazardState {
+  x: number;
+  y: number;
+  radius: number;
+  armSec: number;
+  maxArmSec: number;
+  lifeSec: number;
+  dps: number;
+  burst: number;
+  burstDone: boolean;
+  color: string;
 }
 
 export interface ProjectileState {
@@ -293,7 +371,7 @@ export interface GemState {
   alive: boolean;
 }
 
-export type EffectKind = 'SLASH' | 'CONE' | 'PULSE' | 'HEAL' | 'BOOM' | 'DEATH' | 'LEVEL' | 'CHAIN' | 'EVOLVE';
+export type EffectKind = 'SLASH' | 'CONE' | 'PULSE' | 'HEAL' | 'BOOM' | 'DEATH' | 'LEVEL' | 'CHAIN' | 'EVOLVE' | 'TELE_LINE' | 'TELE_CIRCLE' | 'SHIELD_PULSE';
 
 export interface EffectState {
   kind: EffectKind;
@@ -360,8 +438,10 @@ export interface HudSnapshot {
   squadCount: number;
   traitActive: boolean;
   bossAlive: boolean;
+  bossName: string;
   bossHp: number;
   bossMaxHp: number;
+  banner: string | null;
   squads: SquadHud[];
   modules: ModuleState[];
   chestResult: ChestResult | null;

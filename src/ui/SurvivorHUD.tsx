@@ -34,11 +34,14 @@ export const SurvivorHUD: React.FC = () => {
             <div className="font-pixel text-sm text-slate-100 sm:text-lg">{formatTime(hud.elapsedSec)}</div>
             {hud.bossAlive && (
               <div className="mt-0.5 w-36 sm:w-56">
-                <div className="text-[9px] text-rose-300">블라이트 모체</div>
+                <div className="text-[9px] text-rose-300">{hud.bossName}</div>
                 <div className="h-1.5 overflow-hidden rounded-sm bg-slate-900/80">
                   <div className="h-full bg-rose-500" style={{ width: `${(hud.bossHp / hud.bossMaxHp) * 100}%` }} />
                 </div>
               </div>
+            )}
+            {hud.banner && (
+              <div className="mt-1 rounded border border-amber-500/50 bg-slate-950/85 px-2 py-0.5 text-[10px] text-amber-200 sm:text-xs">{hud.banner}</div>
             )}
           </div>
           <button type="button" onClick={togglePause} className="pointer-events-auto cursor-pointer rounded border border-slate-700 bg-slate-950/80 px-2 py-0.5 hover:bg-slate-800">

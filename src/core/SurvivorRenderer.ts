@@ -180,6 +180,30 @@ export class SurvivorRenderer {
       }
     }
 
+    // ── 적 위험 지대 (예고 중엔 점멸 테두리, 활성화되면 채움)
+    for (const h of engine.hazards) {
+      const col = hexNum(h.color);
+      const x = Math.round(h.x);
+      const y = Math.round(h.y);
+      if (h.armSec > 0) {
+        const k = 1 - h.armSec / Math.max(0.01, h.maxArmSec);
+        gf.circle(x, y, h.radius).stroke({ width: 1, color: col, alpha: blink ? 0.9 : 0.45 });
+        gf.circle(x, y, h.radius * k).fill({ color: col, alpha: 0.18 });
+      } else if (h.dps > 0) {
+        gf.circle(x, y, h.radius).fill({ color: col, alpha: 0.28 });
+        gf.circle(x, y, h.radius).stroke({ width: 1, color: col, alpha: 0.6 });
+      }
+    }
+    // 엘리트 특성 표시 (오라 범위, 보호막 고리)
+    for (const e of engine.enemies) {
+      if (e.affixes.includes('AURA')) {
+        gf.circle(Math.round(e.x), Math.round(e.y), 56).stroke({ width: 1, color: 0xc070ff, alpha: 0.35 });
+      }
+      if (e.shield > 0) {
+        gf.circle(Math.round(e.x), Math.round(e.y), e.radius + 3).stroke({ width: 1, color: 0x7fe3ff, alpha: 0.8 });
+      }
+    }
+
     // ── 경험치 결정
     const gg = this.gemGfx;
     gg.clear();
@@ -236,6 +260,14 @@ export class SurvivorRenderer {
       }
     }
 
+    // ── 적 투사체
+    for (const p of engine.enemyShots) {
+      const x = Math.round(lerp(p.px, p.x));
+      const y = Math.round(lerp(p.py, p.y));
+      pg.circle(x, y, p.radius).fill({ color: 0x1a0a0a });
+      pg.circle(x, y, p.radius - 1).fill({ color: hexNum(p.color) });
+    }
+
     // ── 이펙트
     const eg = this.fxGfx;
     eg.clear();
@@ -280,6 +312,16 @@ export class SurvivorRenderer {
         case 'EVOLVE':
           eg.circle(f.x, f.y, f.radius * (1.4 - t)).stroke({ width: 2, color: col, alpha: t });
           eg.rect(Math.round(f.x) - 1, Math.round(f.y) - 14 * (1 - t) - 4, 2, 6).fill({ color: 0xffffff, alpha: t });
+          break;
+        case 'TELE_LINE':
+          eg.moveTo(f.x, f.y).lineTo(f.x2, f.y2).stroke({ width: blink ? 3 : 2, color: col, alpha: 0.35 + 0.4 * (1 - t) });
+          break;
+        case 'TELE_CIRCLE':
+          eg.circle(f.x, f.y, f.radius).stroke({ width: 1, color: col, alpha: blink ? 0.9 : 0.4 });
+          eg.circle(f.x, f.y, f.radius * (1 - t)).fill({ color: col, alpha: 0.2 });
+          break;
+        case 'SHIELD_PULSE':
+          eg.circle(f.x, f.y, f.radius * (1 - t * 0.8)).stroke({ width: 2, color: col, alpha: t });
           break;
         case 'LEVEL':
           eg.circle(f.x, f.y, f.radius * (1.2 - t)).stroke({ width: 2, color: col, alpha: t });
