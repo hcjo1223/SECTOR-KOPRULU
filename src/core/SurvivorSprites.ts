@@ -1465,258 +1465,930 @@ function drawMatron32(
 }
 
 
-/**
- * 32x32 전용 드로잉이 아직 없는 아키타입용 오리지널 12x12 실루엣 맵.
- * 2배 확대 + 하단 음영 + 좌향 반전으로 32x32 8방향 버퍼에 맞춘다 (전용 드로잉 추가 시 교체).
- */
-const LEGACY_MAPS: Partial<Record<SpriteArchetype, readonly string[]>> = {
-  SNIPER: [
-    '............',
-    '...oooo.....',
-    '..oddddo....',
-    '..odaapo....',
-    '..odhppo....',
-    '.oddppppoooo',
-    'okkkkkkkkkko',
-    '.odpppppoooo',
-    '..odpppdo...',
-    '..opo.opo...',
-    '..odo.odo...',
-    '..oo...oo...',
-  ],
-  SHIELDER: [
-    '....ooo.....',
-    '...ohppo....',
-    '...oaaao....',
-    '..oohppo.oo.',
-    '.oddppdooaao',
-    '.odpppdoahao',
-    '.odpppdoahao',
-    '.oddpddoahao',
-    '..oppppoaao.',
-    '..opoopooo..',
-    '..odoodo....',
-    '..oo..oo....',
-  ],
-  SAPPER: [
-    '....ooo.....',
-    '...ohppo....',
-    '..ooaaao....',
-    '.okkohppo...',
-    '.okkddppdo..',
-    '.okkdpppdo..',
-    '..oodpppdo..',
-    '...oddpddo..',
-    '...oppppo.oo',
-    '...opoopooao',
-    '...odoodo.oo',
-    '...oo..oo...',
-  ],
-  TESLA: [
-    '.....aa.....',
-    '....awwa....',
-    '.....oo.....',
-    '....ohho....',
-    '...okaako...',
-    '....ohho....',
-    '...okaako...',
-    '..ohhppppo..',
-    '.ohpppppddo.',
-    '.odddddddddo',
-    '..oo.oo.oo..',
-    '.oo..oo..oo.',
-  ],
-  CHARGER: [
-    '............',
-    '.a..........',
-    '.oao.oooo...',
-    '..oaohhppoo.',
-    '..ooppppppdo',
-    '.ohpkppppddo',
-    'oaapppppppdo',
-    '.oddppppddo.',
-    '..oddddddo..',
-    '..o.o..o.o..',
-    '.oo.oo.oo.oo',
-    '............',
-  ],
-  SPORER: [
-    '....oooo....',
-    '..ooaaaaoo..',
-    '.oaaahhaaao.',
-    '.oaaaaaaaao.',
-    '..oooppooo..',
-    '...ophhpo...',
-    '..oppkkppo..',
-    '..opkaakpo..',
-    '..odppppdo..',
-    '...odddo....',
-    '..o.o.o.o...',
-    '............',
-  ],
-  SPLITTER: [
-    '............',
-    '...oo..oo...',
-    '..ohpoohpo..',
-    '.ohppaappdo.',
-    '.opppaapppo.',
-    '.oaaaaaaaao.',
-    '.oppaappppo.',
-    '.ohppaapddo.',
-    '..odpoodpo..',
-    '...oo..oo...',
-    '..o.o..o.o..',
-    '............',
-  ],
-  BOMBER: [
-    '.....a......',
-    '....oao.....',
-    '...oaaao....',
-    '..oahwhao...',
-    '..oaaaaao...',
-    '..odaaado...',
-    '...oppppo...',
-    '..ohppppdo..',
-    '..oddddddo..',
-    '..o.o..o.o..',
-    '.o..o..o..o.',
-    '............',
-  ],
-  SHELL: [
-    '............',
-    '...oooooo...',
-    '..oaaaaaao..',
-    '.oahhhhhhao.',
-    'oahhppppphao',
-    'oaphpkpkppao',
-    'oappppppppao',
-    '.oddppppddo.',
-    '..oddddddo..',
-    '.o.o.oo.o.o.',
-    '............',
-    '............',
-  ],
-  NEST: [
-    '............',
-    '....oooo....',
-    '..oohhppoo..',
-    '.ohpkpppkpo.',
-    '.oppppaapdo.',
-    'ohpkpppppkdo',
-    'oppppaappddo',
-    'odpkpppkpddo',
-    'odddddddddo.',
-    'oaoaoaoaoaoo',
-    '............',
-    '............',
-  ],
-  QUEEN: [
-    '.a...aa...a.',
-    '.oa.oaao.ao.',
-    '..ooohhooo..',
-    '.ohhppppppo.',
-    'ohpakppkapdo',
-    'opppppppppdo',
-    'oaooppppooao',
-    'oa.oddddo.ao',
-    '.o.opppo..o.',
-    '...odpdo....',
-    '..oo.o.oo...',
-    '.o...o...o..',
-  ],
-  SPIRE: [
-    '.....aa.....',
-    '....oaao....',
-    '....ohpo....',
-    '...oapado...',
-    '...ohppdo...',
-    '..oapppado..',
-    '..ohpppddo..',
-    '..oapppado..',
-    '.ohpppppddo.',
-    '.oaappppaao.',
-    'oddddddddddo',
-    'oaoaoaoaoaoo',
-  ],
-};
+// ─────────────────────────── 5. 신규 12종 32x32 전용 드로잉 (M5.1 철갑 분대 4 + M6 블라이트 8) ───────────────────────────
 
-function renderLegacyUpscaled(
-  map: readonly string[],
+function isBackDir(dir: SpriteDir8): boolean {
+  return dir === 'N' || dir === 'NE' || dir === 'NW';
+}
+
+/** 좌(-1) / 정면·후면(0) / 우(+1) 시점 부호 */
+function sideSign(dir: SpriteDir8): number {
+  if (dir === 'E' || dir === 'NE' || dir === 'SE') return 1;
+  if (dir === 'W' || dir === 'NW' || dir === 'SW') return -1;
+  return 0;
+}
+
+function drawLine(c: SculptCanvas32, x0: number, y0: number, x1: number, y1: number, col: Rgb): void {
+  let x = Math.round(x0);
+  let y = Math.round(y0);
+  const xe = Math.round(x1);
+  const ye = Math.round(y1);
+  const ddx = Math.abs(xe - x);
+  const ddy = -Math.abs(ye - y);
+  const sx = x < xe ? 1 : -1;
+  const sy = y < ye ? 1 : -1;
+  let err = ddx + ddy;
+  for (let guard = 0; guard < 96; guard += 1) {
+    c.px(x, y, col);
+    if (x === xe && y === ye) break;
+    const e2 = 2 * err;
+    if (e2 >= ddy) {
+      err += ddy;
+      x += sx;
+    }
+    if (e2 <= ddx) {
+      err += ddx;
+      y += sy;
+    }
+  }
+}
+
+/** 결정론적 지그재그 번개: 바깥 1px 글로우 + 흰 코어 */
+function drawBolt(
+  c: SculptCanvas32,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  seed: number,
+  glow: Rgb,
+  core: Rgb
+): void {
+  const segs = 5;
+  const len = Math.hypot(x1 - x0, y1 - y0) || 1;
+  const nx = -(y1 - y0) / len;
+  const ny = (x1 - x0) / len;
+  const pts: Array<[number, number]> = [[x0, y0]];
+  for (let i = 1; i < segs; i += 1) {
+    const t = i / segs;
+    const j = (((seed * 7 + i * 13) % 5) - 2) * 0.9;
+    pts.push([x0 + (x1 - x0) * t + nx * j, y0 + (y1 - y0) * t + ny * j]);
+  }
+  pts.push([x1, y1]);
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const [ax, ay] = pts[i];
+    const [bx, by] = pts[i + 1];
+    drawLine(c, ax + 1, ay, bx + 1, by, glow);
+    drawLine(c, ax, ay + 1, bx, by + 1, glow);
+  }
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    drawLine(c, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], core);
+  }
+}
+
+/** 모서리를 깎은 판금 타워 실드 (좌상단 광원, 금장 테두리, 관측 슬릿) */
+function drawTowerShield(
+  c: SculptCanvas32,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  plate: ClusterRamp8,
+  trim: TrimRamp5,
+  slit: Rgb,
+  emblem: Rgb
+): void {
+  const x1 = x0 + w - 1;
+  const y1 = y0 + h - 1;
+  const inside = (x: number, y: number): boolean => {
+    if (x < x0 || x > x1 || y < y0 || y > y1) return false;
+    const cornerTop = (x === x0 || x === x1) && y === y0;
+    const cornerBot = (x - x0 < 2 || x1 - x < 2) && y1 - y < 2 && !(x - x0 >= 1 && x1 - x >= 1 && y === y1 - 1);
+    return !cornerTop && !cornerBot;
+  };
+  for (let y = y0 - 1; y <= y1 + 1; y += 1) {
+    for (let x = x0 - 1; x <= x1 + 1; x += 1) {
+      if (!inside(x, y)) {
+        if (inside(x - 1, y) || inside(x + 1, y) || inside(x, y - 1) || inside(x, y + 1)) {
+          c.px(x, y, OUTLINE_RGB);
+        }
+        continue;
+      }
+      const edgeL = !inside(x - 1, y);
+      const edgeR = !inside(x + 1, y);
+      const edgeT = !inside(x, y - 1);
+      const edgeB = !inside(x, y + 1);
+      let col: Rgb;
+      if (edgeT) col = trim.t4;
+      else if (edgeB) col = trim.t0;
+      else if (edgeL) col = trim.t3;
+      else if (edgeR) col = trim.t1;
+      else {
+        const u = (x - x0) / Math.max(1, w - 1);
+        const v = (y - y0) / Math.max(1, h - 1);
+        const k = u * 0.55 + v * 0.75;
+        col = k < 0.25 ? plate.c7 : k < 0.45 ? plate.c6 : k < 0.7 ? plate.c5 : k < 0.95 ? plate.c4 : k < 1.15 ? plate.c3 : plate.c2;
+      }
+      c.px(x, y, col);
+    }
+  }
+  // 관측 슬릿 + 중앙 쉐브론 문장
+  const sy = y0 + 3;
+  c.hLine(x0 + 2, x1 - 2, sy, OUTLINE_RGB);
+  c.hLine(x0 + 3, x1 - 3, sy, slit);
+  c.px(x0 + 3, sy, lighten(slit, 0.6));
+  const mx = Math.floor((x0 + x1) / 2);
+  const my = y0 + Math.floor(h * 0.58);
+  for (let i = 0; i < Math.min(3, Math.floor(w / 3)); i += 1) {
+    c.px(mx - i, my - 1 + i, emblem);
+    c.px(mx + i + ((w + 1) % 2 === 0 ? 0 : 0), my - 1 + i, darken(emblem, 0.25));
+  }
+  // 리벳
+  c.px(x0 + 1, y1 - 3, trim.t2);
+  c.px(x1 - 1, y1 - 3, trim.t1);
+}
+
+function bugLegPairs(
+  c: SculptCanvas32,
+  cx: number,
+  cy: number,
+  pairs: number,
+  gap: number,
+  inner: number,
+  reach: number,
+  frame: number,
+  anim: SpriteAnim,
+  ramp: ClusterRamp8,
+  tip: Rgb,
+  r: number = 1.4
+): void {
+  for (let i = 0; i < pairs; i += 1) {
+    const ly = cy + (i - (pairs - 1) / 2) * gap;
+    const phase = anim === 'WALK' ? ((i + frame) % 2 === 0 ? -1 : 1) : (i + frame) % 2 === 0 ? 0 : 1;
+    const footY = ly + 3 + phase + (i - (pairs - 1) / 2) * 1.2;
+    const kneeLX = cx - inner - reach * 0.6;
+    const footLX = cx - inner - reach;
+    c.partCapsule(cx - inner, ly, kneeLX, ly - 1.5, r, ramp);
+    c.partCapsule(kneeLX, ly - 1.5, footLX, footY, r * 0.85, ramp);
+    c.partCapsule(31 - (cx - inner), ly, 31 - kneeLX, ly - 1.5, r, ramp);
+    c.partCapsule(31 - kneeLX, ly - 1.5, 31 - footLX, footY - phase * 2, r * 0.85, ramp);
+    c.px(footLX, footY + 1, tip);
+    c.px(31 - footLX, footY + 1 - phase * 2, tip);
+  }
+}
+
+function glowEyes(c: SculptCanvas32, x: number, y: number, spread: number, col: Rgb, f: number): void {
+  for (const sx of [-1, 1]) {
+    const ex = Math.round(x + sx * spread);
+    c.px(ex, y, f === 1 ? lighten(col, 0.5) : col);
+    c.px(ex, y - 1, OUTLINE_RGB);
+    c.px(ex + (sx < 0 ? -1 : 1), y, OUTLINE_RGB);
+    c.px(ex - (sx < 0 ? -1 : 1), y, darken(col, 0.35));
+  }
+}
+
+// ── 철갑 연합 신규 분대 4종 ──
+
+function drawSniper32(
+  c: SculptCanvas32,
   palette: FactionPalette,
   frame: number,
   dir: SpriteDir8,
   anim: SpriteAnim
-): { width: number; height: number; data: Uint8ClampedArray } {
-  const size = SPRITE_SIZE;
-  const data = new Uint8ClampedArray(size * size * 4);
-  const primary = hexToRgb(palette.primary);
-  const accent = hexToRgb(palette.accent);
-  // 대기 2프레임째는 강조색이 은은히 밝아지는 호흡, 공격 프레임은 강하게 발광
-  const accentNow = anim === 'ATTACK' ? lighten(accent, 0.5) : frame % 2 === 1 ? lighten(accent, 0.22) : accent;
-  const colors: Record<string, Rgb> = {
-    o: OUTLINE_RGB,
-    p: primary,
-    d: hexToRgb(palette.secondary),
-    a: accentNow,
-    h: lighten(primary, 0.38),
-    w: [244, 246, 255],
-    k: [26, 29, 38],
-  };
-  const flip = dir === 'W' || dir === 'NW' || dir === 'SW';
-  const bob = anim === 'WALK' && frame % 2 === 1 ? 1 : 0;
-  const ox = 4;
-  const oy = 7 - bob;
-  const put = (px: number, py: number, c: Rgb): void => {
-    if (px < 0 || px >= size || py < 0 || py >= size) {
-      return;
-    }
-    const i = (py * size + px) * 4;
-    data[i] = c[0];
-    data[i + 1] = c[1];
-    data[i + 2] = c[2];
-    data[i + 3] = 255;
-  };
-  for (let y = 0; y < 12; y += 1) {
-    const row = (map[y] ?? '').padEnd(12, '.');
-    for (let x = 0; x < 12; x += 1) {
-      const key = row[x];
-      const base = colors[key];
-      if (!base) {
-        continue;
-      }
-      const sx = flip ? 11 - x : x;
-      for (let dy = 0; dy < 2; dy += 1) {
-        for (let dx = 0; dx < 2; dx += 1) {
-          const py = oy + y * 2 + dy;
-          let c = base;
-          if (key !== 'o' && key !== 'w') {
-            // 위쪽은 밝게, 아래쪽은 어둡게: 세로 볼륨 램프 + 블록 하단 음영
-            const k = (py - oy) / 24;
-            c = k < 0.4 ? lighten(base, (0.4 - k) * 0.35) : darken(base, (k - 0.4) * 0.45);
-            if (dy === 1) {
-              c = darken(c, 0.12);
-            }
-          }
-          put(ox + sx * 2 + dx, py, c);
-        }
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const { dx, dy } = dir8Vector(dir);
+  const back = isBackDir(dir);
+  const gunRamp = makeRamp8(sp.metal.t2, sp.metal.t0, sp.white);
+  const cloakRamp = makeRamp8(mixRgb(sp.body.c3, [92, 104, 72], 0.55), mixRgb(sp.body.c1, [36, 42, 30], 0.6), sp.trim.t4);
+  const lens: Rgb = [255, 92, 72];
+
+  // 위장 망토 (등 뒤로 떨어지는 짧은 케이프)
+  const paintCloak = (): void => {
+    const shift = -sideSign(dir) * 2;
+    for (let y = 12; y <= 25; y += 1) {
+      const half = Math.min(9, 5 + Math.floor((y - 12) * 0.45));
+      for (let x = 16 - half; x <= 15 + half; x += 1) {
+        const jag = y === 25 && (x + f) % 3 === 0;
+        if (jag) continue;
+        const edge = x === 16 - half || x === 15 + half || y === 25 || (y === 24 && (x + f) % 3 === 0);
+        const u = (x - (16 - half)) / (2 * half);
+        c.px(x + shift, y, edge ? OUTLINE_RGB : u < 0.3 ? cloakRamp.c5 : u < 0.7 ? cloakRamp.c4 : cloakRamp.c2);
       }
     }
+  };
+  if (!back) paintCloak();
+
+  stamp8DirSheet(c, palette, frame, dir, anim, 0, lens, false);
+
+  if (back) paintCloak();
+
+  // 위장 후드 + 붉은 단안 조준경
+  c.partDome(15.5, 4, 6.2, 2.6, cloakRamp);
+  if (!back) {
+    const lx = 15 + Math.round(dx * 3) + (sideSign(dir) === 0 ? 3 : 0);
+    c.rect(lx - 1, 7, 3, 3, OUTLINE_RGB);
+    c.px(lx, 8, lens);
+    c.px(lx - 1, 7, sp.metal.t3);
+    c.px(lx + 1, 8, lighten(lens, 0.5));
   }
+
   if (anim === 'ATTACK') {
-    // 바라보는 방향 앞쪽 공격 섬광
-    const v = dir8Vector(dir);
-    const cx = Math.round(16 + v.dx * 11);
-    const cy = Math.round(18 + v.dy * 9) - bob;
-    const glow = lighten(accent, 0.7);
-    for (let yy = -2; yy <= 2; yy += 1) {
-      for (let xx = -2; xx <= 2; xx += 1) {
-        if (Math.abs(xx) + Math.abs(yy) <= (frame % 2 === 0 ? 3 : 2)) {
-          put(cx + xx, cy + yy, Math.abs(xx) + Math.abs(yy) <= 1 ? [255, 255, 255] : glow);
-        }
+    // 조준 사격: 장포신이 조준 방향으로 길게 뻗는다
+    const recoil = f === 1 ? 1 : 0;
+    const bx = 16 - dx * recoil;
+    const by = 18 - dy * recoil;
+    const tx = bx + dx * 15;
+    const ty = by + dy * 13;
+    c.partCapsule(bx - dx * 4, by - dy * 3, bx + dx * 6, by + dy * 5, 1.8, gunRamp);
+    c.partCapsule(bx + dx * 6, by + dy * 5, tx, ty, 0.9, gunRamp);
+    c.partDome(bx + dx * 2, by + dy * 2 - 2, 2.2, 1.2, gunRamp);
+    c.px(bx + dx * 2 - 1, by + dy * 2 - 2, lens);
+    c.stampMuzzleBlast(tx + dx * 2, ty + dy * 2, dx, dy, f, 'FIRE');
+    if (f === 0) {
+      drawLine(c, tx + dx * 5, ty + dy * 5, tx + dx * 16, ty + dy * 16, [255, 244, 200]);
+    }
+  } else {
+    // 대기/이동: 대물 저격총을 사선으로 거치 (총구가 어깨 위로 솟음)
+    const s = sideSign(dir) < 0 ? -1 : 1;
+    const ax = 15.5 - s * 7;
+    const bx = 15.5 + s * 9;
+    const lift = f;
+    c.partCapsule(ax, 25, 15.5 + s * 3, 15 - lift, 1.7, gunRamp);
+    c.partCapsule(15.5 + s * 3, 15 - lift, bx, 1 - lift, 0.9, gunRamp);
+    c.partDome(15.5 + s * 1, 17 - lift, 2.4, 1.3, gunRamp);
+    c.px(15.5 + s * 1 - s * 2, 17 - lift, lens);
+    c.px(bx, 1 - lift, sp.trim.t4);
+    c.px(bx - s, 2 - lift, sp.trim.t3);
+  }
+}
+
+function drawShielder32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const { dx, dy } = dir8Vector(dir);
+  const back = isBackDir(dir);
+  const plate = makeRamp8(mixRgb(sp.metal.t3, sp.body.c5, 0.35), sp.metal.t0, sp.white);
+  const bash = anim === 'ATTACK' ? (f === 0 ? 3 : 1) : 0;
+  const bob = anim === 'WALK' ? frame % 2 : 0;
+  const ox = Math.round(dx * bash);
+  const oy = Math.round(dy * bash * 0.6);
+
+  const paintShield = (): void => {
+    if (dir === 'E' || dir === 'W') {
+      // 측면: 두께 있는 판이 정면을 가린다
+      const x = dir === 'E' ? 21 : 6;
+      drawTowerShield(c, x + ox, 9 + bob, 5, 20, plate, sp.trim, sp.eyeGlow, sp.trim.t4);
+    } else if (back) {
+      // 후면: 등에 멘 방패 뒷면 (보강 프레임)
+      const s = sideSign(dir);
+      drawTowerShield(c, 9 + s * 3, 10 + bob, 14, 17, makeRamp8(sp.metal.t2, sp.metal.t0, sp.metal.t4), sp.trim, sp.metal.t1, sp.metal.t2);
+      c.vLine(15 + s * 3, 12 + bob, 25 + bob, sp.metal.t1);
+      c.vLine(16 + s * 3, 12 + bob, 25 + bob, sp.metal.t0);
+      c.hLine(11 + s * 3, 20 + s * 3, 18 + bob, sp.metal.t1);
+    } else {
+      const s = sideSign(dir);
+      drawTowerShield(c, 4 + s * 7 + ox, 12 + bob + oy, 13, 17, plate, sp.trim, sp.eyeGlow, sp.trim.t4);
+    }
+  };
+
+  stamp8DirSheet(c, palette, frame, dir, anim, 0, sp.eyeGlow, false);
+  // 견갑 위 상단 증가 장갑
+  c.symPartDome(7.5, 12, 3.4, 2.2, plate, { trim: sp.trim, trimBottom: true });
+  paintShield();
+
+  if (anim === 'ATTACK') {
+    // 방패 강타 충격파
+    const hx = 16 + dx * 13;
+    const hy = 19 + dy * 10;
+    c.stampMuzzleBlast(hx, hy, dx, dy, f, 'CYAN');
+    if (f === 0) {
+      for (let k = -2; k <= 2; k += 2) {
+        c.px(hx - dy * k * 2, hy + dx * k * 2, sp.white);
       }
     }
   }
-  return { width: size, height: size, data };
+}
+
+function drawSapper32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const { dx, dy } = dir8Vector(dir);
+  const back = isBackDir(dir);
+  const s = sideSign(dir);
+  const mineRamp = makeRamp8([96, 104, 84], [34, 38, 30], sp.trim.t4);
+  const led: Rgb = f === 0 ? [255, 60, 52] : [120, 24, 26];
+  const hazard = sp.trim.t3;
+
+  const mine = (x: number, y: number, rx: number): void => {
+    c.partDome(x, y, rx, rx * 0.55, mineRamp, { trim: sp.trim, trimBottom: true });
+    c.px(x, y - 1, led);
+    c.px(x - 1, y - 1, OUTLINE_RGB);
+    c.px(x + 1, y - 1, OUTLINE_RGB);
+  };
+
+  // 등짐: 지뢰 3단 랙
+  const paintPack = (): void => {
+    const px = 15.5 - s * 3;
+    c.partDome(px, 13, 6.2, 5.6, makeRamp8(sp.metal.t2, sp.metal.t0, sp.metal.t4), { trim: sp.trim, trimBottom: true });
+    mine(px - 2.5, 9, 3.2);
+    mine(px + 2.5, 10, 3.2);
+    mine(px, 14, 3.4);
+    // 경고 줄무늬
+    for (let k = 0; k < 4; k += 1) c.px(px - 4 + k * 2, 18, k % 2 === 0 ? hazard : OUTLINE_RGB);
+  };
+
+  if (back) {
+    stamp8DirSheet(c, palette, frame, dir, anim, 0, sp.trim.t4, false);
+    paintPack();
+  } else {
+    stamp8DirSheet(c, palette, frame, dir, anim, 0, sp.trim.t4, false);
+    // 정면: 견갑 위에 고정한 원반 지뢰 랙
+    if (s >= 0) mine(6, 9, 3.4);
+    if (s <= 0) mine(25, 9, 3.4);
+    // 허리 탄띠: 경고 줄무늬
+    for (let x = 10; x <= 21; x += 1) {
+      if (c.isOpaque(x, 21)) c.px(x, 21, (x >> 1) % 2 === 0 ? hazard : OUTLINE_RGB);
+    }
+  }
+
+  // 탐지 안테나
+  const ax = s < 0 ? 22 : 9;
+  c.vLine(ax, 1, 6, OUTLINE_RGB);
+  c.vLine(ax + (s < 0 ? -1 : 1), 2, 6, sp.metal.t3);
+  c.px(ax + (s < 0 ? -1 : 1), 1, led);
+
+  if (anim === 'ATTACK') {
+    // 설치: 발치 앞에 지뢰를 박고 흙먼지가 튄다
+    const mx = 16 + dx * 9;
+    const my = 27 + dy * 2;
+    mine(mx, my, 4.2);
+    c.px(mx, my - 1, f === 0 ? [255, 240, 200] : led);
+    const dust: Rgb = [150, 128, 98];
+    c.px(mx - 5, my - 2 - f, dust);
+    c.px(mx + 5, my - 2 - f, dust);
+    c.px(mx - 4, my - 4 - f, lighten(dust, 0.3));
+    c.px(mx + 4, my - 4 - f, lighten(dust, 0.3));
+    c.stampMuzzleBlast(16 + dx * 6, 22 + dy * 4, dx * 0.6, 1, f, 'FIRE');
+  } else if (!back) {
+    // 손에 든 원반 지뢰
+    const hx = s < 0 ? 5 : 26;
+    mine(hx, 22 + f, 3.8);
+    c.px(hx - 2, 23 + f, hazard);
+    c.px(hx + 2, 23 + f, hazard);
+  }
+}
+
+function drawTesla32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const { dx, dy } = dir8Vector(dir);
+  const back = isBackDir(dir);
+  const s = sideSign(dir);
+  const coilRamp = makeRamp8([196, 120, 64], [82, 40, 18], [255, 230, 190]);
+  const orbRamp = makeRamp8([120, 236, 255], [20, 90, 160], sp.white);
+  const glow: Rgb = [95, 224, 255];
+  const charge = anim === 'ATTACK' ? 1 : f;
+
+  // 등에 멘 코일 탑: 구리 코일 + 금장 절연 링 + 축전 구체
+  const cx = back ? 15.5 : s > 0 ? 8 : s < 0 ? 23 : 7;
+  const paintCoil = (): void => {
+    c.partCapsule(cx, 17, cx, 6, 2.6, coilRamp);
+    for (let y = 8; y <= 16; y += 3) {
+      c.hLine(Math.round(cx - 2), Math.round(cx + 2), y, sp.trim.t3);
+      c.px(cx - 2, y, sp.trim.t4);
+      c.hLine(Math.round(cx - 3), Math.round(cx + 3), y + 1, OUTLINE_RGB);
+    }
+    c.partDome(cx, 4, 3.4 + charge * 0.4, 3.0 + charge * 0.4, orbRamp);
+    c.px(cx - 1, 3, sp.white);
+  };
+
+  stamp8DirSheet(c, palette, frame, dir, anim, 0, glow, false);
+  paintCoil();
+
+  // 반대편 손목 방전 단자
+  const wx = cx < 16 ? 26 : 5;
+  c.partDome(wx, 20, 2.0, 2.0, coilRamp);
+  c.px(wx, 19, f === 0 ? glow : sp.white);
+
+  if (anim === 'ATTACK') {
+    // 구체에서 조준 방향으로 연쇄 번개
+    const tx = 16 + dx * 15;
+    const ty = 16 + dy * 13;
+    drawBolt(c, cx, 4, tx, ty, frame + 1, glow, sp.white);
+    drawBolt(c, wx, 20, tx, ty, frame + 4, glow, sp.white);
+    c.partDome(tx, ty, 2.2, 2.2, orbRamp);
+    c.px(tx, ty, sp.white);
+  } else if (f === 1) {
+    // 대기 방전 스파크
+    c.px(cx - 4, 2, glow);
+    c.px(cx + 4, 5, glow);
+    c.px(cx + 3, 1, sp.white);
+  }
+}
+
+// ── 블라이트 M6 적 8종 ──
+
+function drawCharger32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const { dx, dy } = dir8Vector(dir);
+  const back = isBackDir(dir);
+  const hornRamp = anim === 'ATTACK' ? makeRamp8(sp.trim.t4, sp.trim.t1, sp.white) : makeRamp8(sp.bone.t3, sp.bone.t0, sp.white);
+  const legRamp = makeRamp8(sp.body.c3, sp.body.c0, sp.body.c6);
+  const crouch = anim === 'ATTACK' ? 1 : 0;
+  const cy = 17 + crouch;
+  const hx = 15.5 + dx * 7;
+  const hy = cy + 2 + dy * 5;
+
+  // 돌진 예고: 뒤편 흙먼지
+  if (anim === 'ATTACK') {
+    const dust: Rgb = [176, 150, 116];
+    const bx = 15.5 - dx * 11;
+    const by = 25 - dy * 4;
+    c.partDome(bx, by, 2.6 + f, 1.8 + f * 0.5, makeRamp8(dust, darken(dust, 0.4), [240, 226, 200]));
+    c.partDome(bx - dy * 4 - dx * 2, by + dx * 2, 1.6, 1.2, makeRamp8(dust, darken(dust, 0.4), [240, 226, 200]));
+  }
+
+  bugLegPairs(c, 15.5, cy + 2, 3, 3.6, 5, 6, frame, anim, legRamp, sp.bone.t3, 1.5);
+
+  const head = (): void => {
+    c.partDome(hx, hy, 5.2, 4.0, sp.body, { trim: sp.trim, trimBottom: true });
+    // 좌우 엄니
+    const px = -dy;
+    const py = dx;
+    for (const k of [-1, 1]) {
+      const bx = hx + px * k * 3;
+      const by = hy + py * k * 2 + 1;
+      c.partCapsule(bx, by, bx + dx * 4 + px * k, by + dy * 3 + 2, 1.1, hornRamp);
+    }
+    // 중앙 대형 뿔: 앞으로 솟아 위로 휜다
+    c.partCapsule(hx, hy - 1, hx + dx * 4, hy - 6 + dy * 2, 1.9, hornRamp);
+    c.partCapsule(hx + dx * 4, hy - 6 + dy * 2, hx + dx * 6, hy - 10 + dy * 2, 1.0, hornRamp);
+    if (!back) glowEyes(c, hx, hy + 1, 2.5, anim === 'ATTACK' ? sp.white : sp.trim.t4, f);
+  };
+
+  if (back) head();
+  // 등딱지: 2단 판갑 + 척추 돌기
+  c.partDome(15.5 - dx * 2, cy - 1 - dy, 9.2, 6.6, sp.body, { trim: sp.trim, trimBottom: true });
+  c.partDome(15.5 - dx * 3, cy - 3 - dy, 6.0, 3.6, makeRamp8(sp.body.c6, sp.body.c2, sp.white));
+  for (let k = -1; k <= 1; k += 1) {
+    const sx = 15.5 - dx * 2 - dx * k * 3 + (dx === 0 ? 0 : 0);
+    const sy = cy - 6 - dy * k * 2 + Math.abs(k);
+    c.px(sx, sy, sp.trim.t4);
+    c.px(sx, sy + 1, sp.trim.t2);
+  }
+  if (!back) head();
+}
+
+function drawSporer32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const { dx, dy } = dir8Vector(dir);
+  const back = isBackDir(dir);
+  const sacRamp = makeRamp8(sp.trim.t3, sp.body.c2, [250, 255, 214]);
+  const legRamp = makeRamp8(sp.body.c3, sp.body.c0, sp.body.c6);
+  const squeeze = anim === 'ATTACK' ? (f === 0 ? -1.2 : -0.4) : f * 0.5;
+
+  bugLegPairs(c, 15.5, 23, 2, 4, 4, 5, frame, anim, legRamp, sp.bone.t3, 1.3);
+
+  const tube = (): void => {
+    const bx = 15.5 + dx * 4;
+    const by = 22 + dy * 2;
+    const tx = 15.5 + dx * 10;
+    const ty = 22 + dy * 6;
+    c.partCapsule(bx, by, tx, ty, 2.0, sp.body);
+    c.partDome(tx, ty, 2.2, 2.0, makeRamp8(sp.trim.t2, sp.trim.t0, sp.trim.t4));
+    c.px(tx, ty, OUTLINE_RGB);
+    c.px(tx + 1, ty, darken(sp.trim.t1, 0.4));
+  };
+
+  if (back) tube();
+  c.partDome(15.5, 21, 7.4, 5.0, sp.body, { trim: sp.trim, trimBottom: true });
+  // 포자낭: 반투명하게 부푼 주머니 + 어두운 포자 구멍
+  const sx = 15.5 - dx * 2;
+  const sy = 12 - dy;
+  c.partDome(sx, sy, 7.6 + squeeze, 7.0 + squeeze, sacRamp, { trim: sp.trim, trimBottom: true });
+  const pores: Array<[number, number]> = [[-3, 1], [2, -2], [3, 3], [-1, 4]];
+  for (const [px, py] of pores) {
+    c.px(sx + px, sy + py, sp.body.c2);
+    c.px(sx + px + 1, sy + py, sp.body.c3);
+    c.px(sx + px, sy + py - 1, lighten(sp.trim.t3, 0.35));
+  }
+  // 낭 표면 핏줄
+  drawLine(c, sx - 5, sy + 2, sx - 2, sy - 3, sp.trim.t1);
+  if (!back) {
+    tube();
+    glowEyes(c, 15.5 + dx * 3, 19 + dy, 2.5, sp.trim.t4, f);
+  }
+
+  if (anim === 'ATTACK') {
+    c.stampMuzzleBlast(15.5 + dx * 13, 22 + dy * 9, dx, dy, f, 'ACID');
+  } else if (f === 1) {
+    c.px(sx + 2, sy - 8, sp.trim.t4);
+    c.px(sx - 4, sy - 7, sp.trim.t3);
+  }
+}
+
+function drawSplitter32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const { dx, dy } = dir8Vector(dir);
+  const back = isBackDir(dir);
+  const legRamp = makeRamp8(sp.body.c3, sp.body.c0, sp.body.c6);
+  const apart = anim === 'ATTACK' ? (f === 0 ? 2 : 1) : 0;
+  const hx = Math.round(dx * 2);
+  const seamHot: Rgb = anim === 'ATTACK' ? sp.white : f === 1 ? lighten(sp.trim.t3, 0.4) : sp.trim.t3;
+
+  bugLegPairs(c, 15.5, 21, 3, 3.2, 6, 5, frame, anim, legRamp, sp.bone.t3, 1.3);
+
+  // 쌍둥이 엽(lobe): 서로 떨어지려는 두 몸통
+  c.partDome(10.5 - apart, 15, 6.4, 7.6, sp.body, { trim: sp.trim, trimBottom: true, trimInnerSide: 'RIGHT' });
+  c.partDome(20.5 + apart, 15, 6.4, 7.6, sp.body, { trim: sp.trim, trimBottom: true, trimInnerSide: 'LEFT', specOffsetX: 0.1 });
+
+  // 갈라지는 발광 이음매 (지그재그)
+  for (let y = 7; y <= 23; y += 1) {
+    const zig = (y + (anim === 'ATTACK' ? 0 : f)) % 4 < 2 ? 0 : 1;
+    const x = 15 + zig;
+    c.px(x, y, seamHot);
+    if (apart > 0) {
+      for (let k = 1; k <= apart; k += 1) {
+        c.px(x - k, y, k === apart ? sp.trim.t2 : sp.trim.t4);
+        c.px(x + k, y, k === apart ? sp.trim.t2 : sp.trim.t4);
+      }
+    } else {
+      c.px(x - 1, y, sp.trim.t1);
+      c.px(x + 1, y, darken(sp.trim.t1, 0.3));
+    }
+  }
+
+  if (!back) {
+    // 엽마다 눈 3개 + 아래 공용 입
+    for (const lx of [10.5 - apart + hx, 20.5 + apart + hx]) {
+      c.px(lx - 2, 15, sp.trim.t4);
+      c.px(lx + 1, 14, sp.trim.t4);
+      c.px(lx, 17, sp.trim.t3);
+      c.px(lx - 2, 16, darken(sp.trim.t3, 0.4));
+      c.px(lx + 1, 15, darken(sp.trim.t3, 0.4));
+    }
+    c.hLine(12 + hx, 19 + hx, 21, OUTLINE_RGB);
+    for (let k = 12; k <= 19; k += 2) c.px(k + hx, 20, sp.bone.t4);
+  } else {
+    // 후면: 엽 위 등 돌기
+    c.px(10.5 - apart, 10, sp.trim.t4);
+    c.px(20.5 + apart, 10, sp.trim.t4);
+  }
+
+  if (anim === 'ATTACK') {
+    c.stampMuzzleBlast(16 + dx * 9, 18 + dy * 8, dx, dy, f, 'CRIMSON');
+  }
+}
+
+function drawBomber32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const { dx } = dir8Vector(dir);
+  const back = isBackDir(dir);
+  const hx = Math.round(dx * 2);
+  const legRamp = makeRamp8(sp.body.c3, sp.body.c0, sp.body.c6);
+  const arming = anim === 'ATTACK';
+  const swell = arming ? 1.2 + f * 0.6 : f * 0.4;
+  const vein: Rgb = arming ? (f === 0 ? sp.white : [255, 236, 140]) : f === 1 ? [255, 236, 160] : sp.trim.t4;
+  const veinDim: Rgb = arming ? sp.trim.t4 : sp.trim.t0;
+
+  bugLegPairs(c, 15.5, 25, 2, 3, 3, 5, frame, anim, legRamp, sp.bone.t3, 1.3);
+  c.partDome(15.5 + hx, 24, 5.6, 3.6, sp.body, { trim: sp.trim, trimBottom: true });
+
+  // 폭발성 주머니: 금이 간 표피 사이로 내부 불빛이 샌다
+  const sacRamp = makeRamp8(mixRgb(sp.body.c5, sp.trim.t2, 0.35), sp.body.c1, sp.trim.t4);
+  c.partDome(15.5, 14, 8.6 + swell, 8.2 + swell, sacRamp, { trim: sp.trim, trimBottom: true });
+  const cracks: Array<[number, number, number, number]> = [
+    [10, 12, 14, 15],
+    [14, 15, 13, 19],
+    [14, 15, 18, 13],
+    [18, 13, 21, 15],
+    [18, 13, 17, 9],
+    [21, 15, 20, 19],
+  ];
+  for (const [x0, y0, x1, y1] of cracks) {
+    drawLine(c, x0 + 1, y0 + 1, x1 + 1, y1 + 1, veinDim);
+    drawLine(c, x0, y0, x1, y1, vein);
+  }
+  c.px(14, 15, sp.white);
+  c.px(18, 13, arming || f === 1 ? sp.white : [255, 236, 160]);
+
+  // 머리 위 도화선 줄기 + 점화 구슬
+  c.partCapsule(16, 6 - swell, 18, 1, 1.0, sp.body);
+  c.partDome(18.5, 1.5, 1.6, 1.4, makeRamp8(sp.trim.t3, sp.trim.t1, sp.white));
+  c.px(18, 1, f === 0 || arming ? sp.white : sp.trim.t4);
+
+  if (!back) {
+    glowEyes(c, 15.5 + hx, 24, 2, sp.trim.t4, f);
+  }
+
+  if (arming) {
+    // 자폭 예고 섬광 스파크
+    const r = 11 + f;
+    for (let k = 0; k < 8; k += 1) {
+      const a = (k / 8) * Math.PI * 2 + f * 0.4;
+      c.px(15.5 + Math.cos(a) * r, 14 + Math.sin(a) * r, k % 2 === 0 ? sp.white : sp.trim.t4);
+    }
+  }
+}
+
+function drawShell32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const { dx, dy } = dir8Vector(dir);
+  const back = isBackDir(dir);
+  const legRamp = makeRamp8(sp.body.c3, sp.body.c0, sp.body.c6);
+  const shellRamp = makeRamp8(sp.body.c6, sp.body.c1, sp.white);
+  const ram = anim === 'ATTACK' ? (f === 0 ? 2 : 1) : 0;
+
+  bugLegPairs(c, 15.5, 22, 3, 3, 7, 4, frame, anim, legRamp, sp.trim.t3, 1.6);
+
+  // 3겹 분절 갑각 (뒤→앞)
+  for (let i = 0; i < 3; i += 1) {
+    const t = i - 1;
+    c.partDome(15.5 - dx * t * 3.5, 16 - dy * t * 3 - (i === 1 ? 1 : 0), 10.2 - Math.abs(t) * 1.2, 6.2, i === 1 ? shellRamp : sp.body, {
+      trim: sp.trim,
+      trimBottom: true,
+    });
+  }
+  // 갑각 이음 홈 + 돌기
+  for (let k = -1; k <= 1; k += 1) {
+    c.px(15.5 + k * 4, 11, sp.trim.t4);
+    c.px(15.5 + k * 4, 12, sp.trim.t2);
+  }
+
+  // 정면 방호판: 정면 피해 감소를 보여주는 두꺼운 은빛 판
+  if (!back) {
+    const fx = 15.5 + dx * (9 + ram);
+    const fy = 19 + dy * (6 + ram);
+    const plate = makeRamp8(sp.trim.t3, sp.body.c1, sp.white);
+    if (dir === 'E' || dir === 'W') {
+      c.partDome(fx, fy - 2, 3.0, 7.0, plate, { trim: sp.trim, trimBottom: true });
+    } else {
+      c.partDome(fx, fy, 7.4, 3.8, plate, { trim: sp.trim, trimBottom: true });
+      c.hLine(Math.round(fx - 4), Math.round(fx + 4), Math.round(fy + 1), OUTLINE_RGB);
+    }
+    glowEyes(c, fx, Math.round(fy + (dir === 'E' || dir === 'W' ? 2 : 2)), dir === 'E' || dir === 'W' ? 0.6 : 2.5, [255, 120, 80], f);
+  }
+
+  if (anim === 'ATTACK') {
+    c.stampMuzzleBlast(16 + dx * 13, 19 + dy * 10, dx, dy, f, 'FIRE');
+  }
+}
+
+function drawNest32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  _dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const hatch = anim === 'ATTACK';
+  const eggRamp = makeRamp8(sp.trim.t3, sp.body.c2, [255, 236, 236]);
+  const fleshRamp = makeRamp8(sp.body.c6, sp.body.c1, sp.trim.t4);
+
+  // 땅을 움켜쥔 촉수 뿌리
+  const roots: Array<[number, number, number, number]> = [
+    [6, 25, 1, 29],
+    [10, 27, 6, 31],
+    [21, 27, 25, 31],
+    [25, 25, 30, 29],
+  ];
+  for (const [x0, y0, x1, y1] of roots) {
+    c.partCapsule(x0, y0, x1 + (f === 1 ? 0 : 0), y1, 1.6, sp.body);
+  }
+
+  // 둥지 본체: 층층이 쌓인 점액 둔덕
+  c.partDome(15.5, 22, 13.0, 7.6, sp.body, { trim: sp.trim, trimBottom: true });
+  c.partDome(15.5, 16, 10.0, 7.0, fleshRamp);
+  c.partDome(15.5, 11, 6.8, 5.0, sp.body);
+
+  // 알 주머니 4개 (박동)
+  const eggs: Array<[number, number, number]> = [
+    [7, 19, 2.8],
+    [24, 19, 2.8],
+    [10, 12, 2.3],
+    [21, 12, 2.3],
+  ];
+  eggs.forEach(([ex, ey, r], i) => {
+    const pulse = (i + frame) % 2 === 0 ? 0.3 : 0;
+    c.partDome(ex, ey, r + pulse, r * 1.1 + pulse, eggRamp, { trim: sp.trim, trimBottom: true });
+    c.px(ex, ey, (i + frame) % 2 === 0 ? sp.trim.t4 : sp.trim.t2);
+  });
+
+  // 중앙 산란구: 여닫히는 구멍과 내부 빛
+  const open = hatch ? 3.2 + f * 0.6 : 2.0 + f * 0.4;
+  c.partDome(15.5, 18, open + 1.6, open, makeRamp8([28, 6, 12], [8, 2, 4], sp.trim.t3));
+  c.px(15, 18, hatch ? sp.white : sp.trim.t3);
+  c.px(16, 18, hatch ? sp.trim.t4 : sp.trim.t2);
+  for (let k = -2; k <= 2; k += 2) c.px(15.5 + k, 18 - open, sp.bone.t4);
+
+  // 꼭대기 촉수 돌기
+  c.partCapsule(15.5, 7, 14, 2 - f, 1.2, sp.body);
+  c.px(14, 1 - f, sp.trim.t4);
+
+  if (hatch) {
+    // 유충 기어 나오기
+    c.partDome(15.5, 22 + f, 2.6, 2.0, makeRamp8(sp.bone.t3, sp.bone.t1, sp.white));
+    c.px(14, 22 + f, sp.trim.t4);
+    c.px(17, 22 + f, sp.trim.t4);
+    c.stampMuzzleBlast(15.5, 20, 0, 1, f, 'CRIMSON');
+  }
+}
+
+function drawQueen32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const { dx, dy } = dir8Vector(dir);
+  const back = isBackDir(dir);
+  const hx = Math.round(dx * 3);
+  const boneRamp = makeRamp8(sp.bone.t3, sp.bone.t0, sp.white);
+  const goldRamp = makeRamp8(sp.trim.t3, sp.trim.t0, sp.white);
+  const legRamp = makeRamp8(sp.body.c3, sp.body.c0, sp.body.c6);
+  const strike = anim === 'ATTACK';
+
+  // 거대 산란 복부 (뒤쪽, 띠 마디)
+  const ax = 15.5 - dx * 4;
+  const ay = 21 - dy * 3;
+  bugLegPairs(c, 15.5, 22, 3, 3, 6, 6, frame, anim, legRamp, sp.trim.t3, 1.4);
+  c.partDome(ax, ay, 9.6, 7.2, sp.body, { trim: sp.trim, trimBottom: true });
+  for (let k = -1; k <= 1; k += 1) {
+    const by = Math.round(ay + k * 3);
+    for (let x = Math.round(ax - 7 + Math.abs(k) * 1); x <= Math.round(ax + 7 - Math.abs(k)); x += 1) {
+      if (c.isOpaque(x, by)) c.px(x, by, x < ax ? sp.body.c3 : sp.body.c2);
+    }
+  }
+  c.px(ax - 3, ay - 4, sp.trim.t4);
+  c.px(ax + 3, ay - 4, sp.trim.t2);
+
+  // 낫 모양 앞다리 2쌍 (공격 시 앞으로 내리찍기)
+  const scythe = (side: number): void => {
+    const sx = 15.5 + side * 6;
+    const raise = strike ? (f === 0 ? -1 : 2) : f;
+    const ex = 15.5 + side * 12;
+    const ey = strike ? 14 + dy * 6 : 4 + raise;
+    c.partCapsule(sx, 13, ex, ey, 1.8, boneRamp);
+    const tipX = ex - side * 3 + (strike ? dx * 4 : 0);
+    const tipY = strike ? ey + 6 : ey + 8;
+    c.partCapsule(ex, ey, tipX, tipY, 1.1, boneRamp);
+    c.px(tipX, tipY + 1, sp.white);
+  };
+
+  // 흉부 + 머리
+  const head = (): void => {
+    const hy = 10 + Math.max(0, dy) * 2;
+    c.partDome(15.5 + hx, hy, 5.6, 4.6, sp.body, { trim: sp.trim, trimBottom: true });
+    // 금빛 왕관 가시 5개
+    const crown: Array<[number, number]> = [[-4, 3], [-2, 5], [0, 6], [2, 5], [4, 3]];
+    for (const [ox, h] of crown) {
+      c.partCapsule(15.5 + hx + ox, hy - 3, 15.5 + hx + ox * 1.25, hy - 3 - h, 0.9, goldRamp);
+    }
+    if (!back) {
+      glowEyes(c, 15.5 + hx, hy, 2.5, sp.trim.t4, f);
+      c.px(15.5 + hx, hy - 2, sp.trim.t4);
+      // 집게 턱 (공격 시 벌어짐)
+      const open = strike ? 2 : 0;
+      c.partCapsule(13.5 + hx - open, hy + 3, 12.5 + hx - open, hy + 7, 1.0, boneRamp);
+      c.partCapsule(17.5 + hx + open, hy + 3, 18.5 + hx + open, hy + 7, 1.0, boneRamp);
+    }
+  };
+
+  if (back) head();
+  c.partDome(15.5 + dx, 15 - dy, 7.2, 5.0, sp.body, { trim: sp.trim, trimBottom: true });
+  c.partDome(15.5 + dx, 13.5 - dy, 4.0, 2.2, makeRamp8(sp.body.c6, sp.body.c3, sp.white));
+  scythe(-1);
+  scythe(1);
+  if (!back) head();
+
+  if (strike) {
+    c.stampMuzzleBlast(16 + dx * 11, 18 + dy * 10, dx, dy, f, 'CRIMSON');
+  }
+}
+
+function drawSpire32(
+  c: SculptCanvas32,
+  palette: FactionPalette,
+  frame: number,
+  _dir: SpriteDir8,
+  anim: SpriteAnim
+): void {
+  const sp = buildStudioPalette(palette);
+  const f = frame % 2;
+  const burst = anim === 'ATTACK';
+  const podRamp = makeRamp8(sp.trim.t3, sp.body.c2, [252, 255, 220]);
+  const barkRamp = makeRamp8(sp.body.c4, sp.body.c0, sp.body.c7);
+
+  // 뿌리
+  const roots: Array<[number, number, number, number]> = [
+    [11, 26, 3, 30],
+    [13, 28, 9, 31],
+    [18, 28, 22, 31],
+    [20, 26, 28, 30],
+  ];
+  for (const [x0, y0, x1, y1] of roots) c.partCapsule(x0, y0, x1, y1, 1.7, barkRamp);
+
+  // 테이퍼진 탑신: 아래가 넓은 마디 4단
+  const tiers: Array<[number, number, number]> = [
+    [26, 7.6, 3.4],
+    [20.5, 6.2, 3.2],
+    [15.5, 5.0, 3.0],
+    [11, 4.0, 2.8],
+  ];
+  for (const [ty, rx, ry] of tiers) {
+    c.partDome(15.5, ty, rx, ry, sp.body, { trim: sp.trim, trimBottom: true });
+  }
+  // 세로 갈비 홈
+  for (let y = 9; y <= 27; y += 1) {
+    if (c.isOpaque(13, y)) c.px(13, y, sp.body.c2);
+    if (c.isOpaque(18, y)) c.px(18, y, sp.body.c1);
+  }
+
+  // 측면 포자 꼬투리 (교대로 박동)
+  const pods: Array<[number, number, number]> = [
+    [7, 23, 2.6],
+    [24, 21, 2.6],
+    [9, 16, 2.2],
+    [22, 14, 2.2],
+  ];
+  pods.forEach(([px, py, r], i) => {
+    const pulse = (i + frame) % 2 === 0 ? 0.35 : 0;
+    c.partDome(px, py, r + pulse, r + pulse, podRamp, { trim: sp.trim, trimBottom: true });
+    c.px(px - 1, py - 1, sp.white);
+  });
+
+  // 정수리 포자 구근 + 발광 개구부
+  const crownR = burst ? 4.4 + f * 0.4 : 3.6 + f * 0.3;
+  c.partDome(15.5, 5, crownR, crownR, podRamp, { trim: sp.trim, trimBottom: true });
+  c.px(15, 5, burst ? sp.white : sp.trim.t4);
+  c.px(16, 5, sp.trim.t4);
+  c.px(15, 4, sp.white);
+  for (const ox of [-3, 0, 3]) c.px(15.5 + ox, 5 - crownR, sp.trim.t4);
+
+  if (burst) {
+    // 포자 고리 방출
+    const r = 8 + f * 2;
+    for (let k = 0; k < 10; k += 1) {
+      const a = (k / 10) * Math.PI * 2;
+      const x = 15.5 + Math.cos(a) * r;
+      const y = 6 + Math.sin(a) * r * 0.7;
+      c.px(x, y, k % 2 === 0 ? sp.trim.t4 : [250, 255, 220]);
+      c.px(x + 1, y, sp.trim.t2);
+    }
+  } else if (f === 1) {
+    c.px(12, 0, sp.trim.t3);
+    c.px(19, 1, sp.trim.t4);
+  }
 }
 
 /**
@@ -1730,10 +2402,6 @@ export function renderSpritePixels(
   anim: SpriteAnim = 'IDLE'
 ): { width: number; height: number; data: Uint8ClampedArray } {
   const f = Math.abs(Math.round(frame));
-  const legacy = LEGACY_MAPS[archetype];
-  if (legacy) {
-    return renderLegacyUpscaled(legacy, palette, f, dir, anim);
-  }
   const canvas = new SculptCanvas32();
 
   switch (archetype) {
@@ -1798,6 +2466,42 @@ export function renderSpritePixels(
       break;
     case 'MATRON':
       drawMatron32(canvas, palette, f, dir, anim);
+      break;
+    case 'SNIPER':
+      drawSniper32(canvas, palette, f, dir, anim);
+      break;
+    case 'SHIELDER':
+      drawShielder32(canvas, palette, f, dir, anim);
+      break;
+    case 'SAPPER':
+      drawSapper32(canvas, palette, f, dir, anim);
+      break;
+    case 'TESLA':
+      drawTesla32(canvas, palette, f, dir, anim);
+      break;
+    case 'CHARGER':
+      drawCharger32(canvas, palette, f, dir, anim);
+      break;
+    case 'SPORER':
+      drawSporer32(canvas, palette, f, dir, anim);
+      break;
+    case 'SPLITTER':
+      drawSplitter32(canvas, palette, f, dir, anim);
+      break;
+    case 'BOMBER':
+      drawBomber32(canvas, palette, f, dir, anim);
+      break;
+    case 'SHELL':
+      drawShell32(canvas, palette, f, dir, anim);
+      break;
+    case 'NEST':
+      drawNest32(canvas, palette, f, dir, anim);
+      break;
+    case 'QUEEN':
+      drawQueen32(canvas, palette, f, dir, anim);
+      break;
+    case 'SPIRE':
+      drawSpire32(canvas, palette, f, dir, anim);
       break;
   }
 

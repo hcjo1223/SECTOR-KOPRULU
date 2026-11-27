@@ -68,6 +68,30 @@ describe('SurvivorSprites', () => {
     }
   });
 
+  it('M5.1/M6 new archetypes use dedicated 32x32 drawings, not 2x-upscaled 12x12 blocks', () => {
+    const fresh = ['SNIPER', 'SHIELDER', 'SAPPER', 'TESLA', 'CHARGER', 'SPORER', 'SPLITTER', 'BOMBER', 'SHELL', 'NEST', 'QUEEN', 'SPIRE'] as const;
+    for (const a of fresh) {
+      const buf = renderSpritePixels(a, ironcladPalette, 0, 'S', 'IDLE');
+      // 2배 업스케일이면 모든 2x2 블록이 단색이다 — 전용 드로잉은 1px 디테일이 블록을 깨뜨린다
+      let brokenBlocks = 0;
+      for (let y = 0; y < 32; y += 2) {
+        for (let x = 0; x < 32; x += 2) {
+          const at = (xx: number, yy: number): string => {
+            const i = (yy * 32 + xx) * 4;
+            return buf.data.slice(i, i + 4).join(',');
+          };
+          const c0 = at(x, y);
+          if (at(x + 1, y) !== c0 || at(x, y + 1) !== c0 || at(x + 1, y + 1) !== c0) brokenBlocks += 1;
+        }
+      }
+      expect(brokenBlocks, a).toBeGreaterThan(60);
+      const views = new Set(ALL_DIRS_8.map((d) => renderSpritePixels(a, ironcladPalette, 0, d, 'IDLE').data.join(',')));
+      if (a !== 'NEST' && a !== 'SPIRE') {
+        expect(views.size, a).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
   it('quantizes 360-degree angles into 8 directions and renders distinct 8-way turntable views and 4-frame WALK cycle', () => {
     expect(angleToDir8(0)).toBe('E');
     expect(angleToDir8(Math.PI / 4)).toBe('SE');
