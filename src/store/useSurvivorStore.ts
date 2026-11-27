@@ -20,6 +20,7 @@ interface SurvivorStoreState {
   togglePause: () => void;
   setPaused: (paused: boolean) => void;
   chooseOffer: (index: number) => void;
+  rerollOffer: (index: number) => void;
   syncFromEngine: () => void;
 }
 
@@ -71,6 +72,13 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
       return;
     }
     if (engine.chooseOffer(index)) {
+      set({ hud: engine.getHud(), offers: [...engine.offers] });
+    }
+  },
+
+  rerollOffer: (index) => {
+    const engine = get().engine;
+    if (engine && engine.rerollOffer(index)) {
       set({ hud: engine.getHud(), offers: [...engine.offers] });
     }
   },

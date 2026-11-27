@@ -7,6 +7,7 @@ import {
   attackWindupSec,
   MARK_DAMAGE_MUL,
   MAX_SQUADS,
+  offerKey,
   squadHeadcount,
   SURVIVOR_DT,
   SurvivorEngine,
@@ -574,6 +575,46 @@ describe('SurvivorEngine', () => {
     }
     expect(shots).toBe(20);
     expect(hits).toBe(20);
+  });
+
+  it('level-up screen allows rerolling one card once, without duplicating the other cards', () => {
+    for (let seed = 1; seed <= 15; seed += 1) {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 600 + seed), 'ic_rifle');
+      e.grantXp(e.xpToNext);
+      expect(e.phase).toBe('LEVEL_UP');
+      expect(e.rerollsLeft).toBe(1);
+      const before = e.offers.map(offerKey);
+      expect(e.rerollOffer(1)).toBe(true);
+      const after = e.offers.map(offerKey);
+      expect(after[0]).toBe(before[0]);
+      expect(after[2]).toBe(before[2]);
+      expect(before).not.toContain(after[1]);
+      expect(new Set(after).size).toBe(3);
+      // 같은 화면에서는 한 번만
+      expect(e.rerollsLeft).toBe(0);
+      expect(e.rerollOffer(0)).toBe(false);
+      e.chooseOffer(0);
+      // 다음 레벨업 화면에서는 다시 1회
+      e.grantXp(e.xpToNext);
+      expect(e.rerollsLeft).toBe(1);
+    }
+  });
+
+  it('supply chests only upgrade squads and modules the player already owns', () => {
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 700 + seed), 'ic_rifle');
+      e.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: 'CORE' });
+      e.grantChest();
+      expect(e.phase).toBe('CHEST');
+      const r = e.chestResult!;
+      expect(r.kind).toBe('UPGRADE');
+      if (r.kind === 'UPGRADE') {
+        expect(['SQUAD_LEVEL', 'MODULE_LEVEL', 'REINFORCE']).toContain(r.offer.kind);
+        if (r.offer.kind === 'SQUAD_LEVEL') expect(r.offer.unitId).toBe('ic_rifle');
+        if (r.offer.kind === 'MODULE_LEVEL') expect(r.offer.moduleId).toBe('CORE');
+      }
+      e.confirmChest();
+    }
   });
 });
 

@@ -161,6 +161,10 @@ export class SurvivorEngine {
   public bossSpawned = false;
   public banner: string | null = null;
   public overchargeStacks = 0;
+  /** 이번 레벨업 화면에서 남은 다시 뽑기 횟수 */
+  public rerollsLeft = 0;
+  /** 레벨업마다 주어지는 다시 뽑기 횟수 */
+  public rerollsPerLevelUp = 1;
 
   private readonly rng: () => number;
   private readonly hash = new SpatialHash(32);
@@ -297,10 +301,28 @@ export class SurvivorEngine {
     this.pendingLevelUps -= 1;
     if (this.pendingLevelUps > 0) {
       this.offers = this.rollOffers(3);
+      this.rerollsLeft = this.rerollsPerLevelUp;
     } else {
       this.offers = [];
       this.phase = 'RUNNING';
     }
+    return true;
+  }
+
+  /**
+   * 레벨업 선택지 한 장을 다시 뽑는다 (레벨업마다 rerollsPerLevelUp회).
+   * 이미 보이는 선택지와 겹치지 않는 새 선택지로 바뀐다. 바꿀 것이 없으면 기회를 쓰지 않는다.
+   */
+  public rerollOffer(index: number): boolean {
+    if (this.phase !== 'LEVEL_UP' || this.rerollsLeft <= 0 || !this.offers[index]) {
+      return false;
+    }
+    const next = this.rollOffers(1, { exclude: this.offers })[0];
+    if (!next || this.offers.some((o) => offerKey(o) === offerKey(next))) {
+      return false;
+    }
+    this.offers = this.offers.map((o, k) => (k === index ? next : o));
+    this.rerollsLeft -= 1;
     return true;
   }
 
@@ -2155,6 +2177,7 @@ export class SurvivorEngine {
     }
     if (this.pendingLevelUps > 0) {
       this.offers = this.rollOffers(3);
+      this.rerollsLeft = this.rerollsPerLevelUp;
       this.phase = 'LEVEL_UP';
       this.addEffect('LEVEL', this.commander.x, this.commander.y, 0, 30, 0, 0.6, '#f2e27a');
     }
@@ -2166,7 +2189,8 @@ export class SurvivorEngine {
       const fromId = this.evolveSquad(ready);
       return { kind: 'EVOLVE', fromId, intoId: ready.def.id };
     }
-    const offer = this.rollOffers(1).find((o) => o.kind !== 'RESUPPLY' && o.kind !== 'OVERCHARGE');
+    // 보급 상자는 보유 중인 분대·모듈의 강화만 준다 (새 분대·모듈은 레벨업에서만)
+    const offer = this.rollOffers(1, { ownedOnly: true }).find((o) => o.kind !== 'RESUPPLY' && o.kind !== 'OVERCHARGE');
     if (offer) {
       this.applyOffer(offer);
       return { kind: 'UPGRADE', offer };
@@ -2234,7 +2258,14 @@ export class SurvivorEngine {
 
   // ─────────────────────────── 레벨업 선택지 ───────────────────────────
 
-  private rollOffers(count: number): LevelUpOffer[] {
+  /**
+   * 레벨업·상자 선택지 뽑기.
+   * ownedOnly: 보유 중인 분대·모듈의 레벨업(+증원)만 (보급 상자용).
+   * exclude: 이미 보이는 선택지와 같은 것은 다시 뽑지 않는다 (다시 뽑기용).
+   */
+  private rollOffers(count: number, opts: { ownedOnly?: boolean; exclude?: readonly LevelUpOffer[] } = {}): LevelUpOffer[] {
+    const ownedOnly = !!opts.ownedOnly;
+    const excluded = new Set((opts.exclude ?? []).map(offerKey));
     const pool: { offer: LevelUpOffer; weight: number }[] = [];
     const ownedSquads = new Set(this.squads.map((s) => s.key));
     const ownedModules = new Set(this.modules.map((m) => m.id));
@@ -2245,7 +2276,7 @@ export class SurvivorEngine {
       }
     }
 
-    if (this.squads.length < MAX_SQUADS) {
+    if (!ownedOnly && this.squads.length < MAX_SQUADS) {
       for (const unitId of this.faction.unitPool) {
         if (!ownedSquads.has(unitId)) {
           pool.push({ offer: { kind: 'NEW_SQUAD', unitId }, weight: 2.6 });
@@ -2257,7 +2288,7 @@ export class SurvivorEngine {
         pool.push({ offer: { kind: 'SQUAD_LEVEL', unitId: s.key, nextLevel: s.level + 1 }, weight: 3 });
       }
     }
-    if (this.modules.length < MAX_MODULES) {
+    if (!ownedOnly && this.modules.length < MAX_MODULES) {
       for (const id of ALL_MODULE_IDS) {
         if (!ownedModules.has(id)) {
           pool.push({ offer: { kind: 'NEW_MODULE', moduleId: id }, weight: wantedModules.has(id) ? 3.2 : 1.6 });
@@ -2272,6 +2303,11 @@ export class SurvivorEngine {
     const missing = this.totalMissing();
     if (missing >= 2) {
       pool.push({ offer: { kind: 'REINFORCE', missing }, weight: 1 + missing * 0.4 });
+    }
+    if (excluded.size > 0) {
+      for (let k = pool.length - 1; k >= 0; k -= 1) {
+        if (excluded.has(offerKey(pool[k].offer))) pool.splice(k, 1);
+      }
     }
 
     const picked: LevelUpOffer[] = [];
@@ -2384,6 +2420,20 @@ export class SurvivorEngine {
       attackFlashSec: 0,
       windupSec: 0,
     };
+  }
+}
+
+/** 선택지 동일성 키: 종류 + 대상 (레벨 숫자는 무시) */
+export function offerKey(o: LevelUpOffer): string {
+  switch (o.kind) {
+    case 'NEW_SQUAD':
+    case 'SQUAD_LEVEL':
+      return `${o.kind}:${o.unitId}`;
+    case 'NEW_MODULE':
+    case 'MODULE_LEVEL':
+      return `${o.kind}:${o.moduleId}`;
+    default:
+      return o.kind;
   }
 }
 
