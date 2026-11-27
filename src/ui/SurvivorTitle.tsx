@@ -3,7 +3,10 @@ import { getSpriteDataUrl } from '../core/SurvivorRenderer';
 import { ALL_DIRS_8, type SpriteAnim, type SpriteDir8 } from '../core/SurvivorSprites';
 import { getAllEnemies, getFactions, getSquadUnitDef, getWaveTable } from '../domain/survivor/SurvivorCatalog';
 import type { FactionDef } from '../domain/survivor/types';
+import { COMMANDER_UNLOCK_COST, isCommanderUnlocked } from '../domain/survivor/MetaProgress';
+import { useMetaStore } from '../store/useMetaStore';
 import { useSurvivorStore } from '../store/useSurvivorStore';
+import { HQPanel } from './HQPanel';
 import { evolutionHint, unitTagLine } from './survivorLabels';
 
 interface Pose {
@@ -40,6 +43,7 @@ export const SurvivorTitle: React.FC = () => {
       </div>
       <FactionBanner faction={faction} pose={pose} />
       <CommanderSelect faction={faction} pose={pose} />
+      <HQPanel />
       <EnemyRoster pose={pose} />
     </div>
   );
@@ -109,6 +113,8 @@ const FactionBanner: React.FC<{ faction: FactionDef; pose: Pose }> = ({ faction:
 
 const CommanderSelect: React.FC<{ faction: FactionDef; pose: Pose }> = ({ faction: f, pose }) => {
   const startRun = useSurvivorStore((s) => s.startRun);
+  const meta = useMetaStore((s) => s.meta);
+  const unlock = useMetaStore((s) => s.unlock);
   return (
     <div className="w-full max-w-5xl">
       <div className="mb-2 flex items-center justify-end">
@@ -134,14 +140,25 @@ const CommanderSelect: React.FC<{ faction: FactionDef; pose: Pose }> = ({ factio
                   추천 분대: {start.name} · 체력 {c.hp} · 이동 {c.moveSpeed}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => startRun(f.id, c.id)}
-                className="mt-3 w-full cursor-pointer rounded px-3 py-2 font-mono-tech text-xs font-bold text-slate-950"
-                style={{ backgroundColor: pal.accent }}
-              >
-                {c.name} 출격
-              </button>
+              {isCommanderUnlocked(meta, c.id) ? (
+                <button
+                  type="button"
+                  onClick={() => startRun(f.id, c.id)}
+                  className="mt-3 w-full cursor-pointer rounded px-3 py-2 font-mono-tech text-xs font-bold text-slate-950"
+                  style={{ backgroundColor: pal.accent }}
+                >
+                  {c.name} 출격
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={meta.data < (COMMANDER_UNLOCK_COST[c.id] ?? 0)}
+                  onClick={() => unlock(c.id)}
+                  className="mt-3 w-full cursor-pointer rounded border border-cyan-700 px-3 py-2 font-mono-tech text-xs text-cyan-200 hover:bg-cyan-950 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  🔒 해금 · 전술 데이터 {COMMANDER_UNLOCK_COST[c.id]}
+                </button>
+              )}
             </div>
           );
         })}
