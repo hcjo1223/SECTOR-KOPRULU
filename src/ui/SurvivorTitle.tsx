@@ -7,6 +7,7 @@ import { COMMANDER_UNLOCK_COST, isCommanderUnlocked } from '../domain/survivor/M
 import { useMetaStore } from '../store/useMetaStore';
 import { useSurvivorStore } from '../store/useSurvivorStore';
 import { HQPanel } from './HQPanel';
+import { SettingsToggles } from './SettingsToggles';
 import { evolutionHint, unitTagLine } from './survivorLabels';
 
 interface Pose {
@@ -39,7 +40,8 @@ export const SurvivorTitle: React.FC = () => {
         <p className="mt-1.5 text-xs text-slate-400 sm:text-sm">
           분대 4개와 모듈 4개로 빌드를 짜고, 엘리트의 보급 상자로 분대를 진화시켜 10분을 버텨라.
         </p>
-        <p className="mt-1 font-mono-tech text-[10px] text-slate-500">WASD / 방향키 이동 · Space 일시정지 · 모바일: 드래그 조이스틱</p>
+        <p className="mt-1 font-mono-tech text-[10px] text-slate-500">WASD / 방향키 이동 · Space 일시정지 · M 음소거 · 모바일: 드래그 조이스틱</p>
+        <SettingsToggles className="mt-1.5 justify-center" />
       </div>
       <FactionBanner faction={faction} pose={pose} />
       <CommanderSelect faction={faction} pose={pose} />

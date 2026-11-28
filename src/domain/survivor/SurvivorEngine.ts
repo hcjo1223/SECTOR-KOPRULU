@@ -16,6 +16,8 @@ import type {
   EnemyState,
   FactionDef,
   FactionId,
+  CueKind,
+  GameCue,
   FactionPalette,
   GemState,
   HazardState,
@@ -184,6 +186,8 @@ export class SurvivorEngine {
   public rerollsLeft = 0;
   /** 레벨업마다 주어지는 다시 뽑기 횟수 */
   public rerollsPerLevelUp = 1;
+  /** 연출 신호 큐: 앱 계층이 매 프레임 비운다 (헤드리스에서는 상한까지만 쌓인다) */
+  public readonly cues: GameCue[] = [];
   /** 보유 유물과, 유물 선택 화면의 선택지 */
   public readonly relics: RelicId[] = [];
   public relicOffers: RelicId[] = [];
@@ -517,10 +521,12 @@ export class SurvivorEngine {
 
     if (!this.commander.alive) {
       this.phase = 'DEFEAT';
+      this.cue('DEFEAT', this.commander.x, this.commander.y, 1);
       return;
     }
     if (this.bossSpawned && this.finalBoss && !this.finalBoss.alive) {
       this.phase = 'VICTORY';
+      this.cue('VICTORY', this.commander.x, this.commander.y, 1);
       return;
     }
     this.maybeOpenChestOrLevelUp();
@@ -594,6 +600,7 @@ export class SurvivorEngine {
       c.attackFlashSec = ATTACK_RELEASE_SEC;
       const dmg = a.damage * this.damageMul();
       this.spawnProjectile(c.x, c.y, aim.x - c.x, aim.y - c.y, a, dmg, a.rangePx * 1.15, this.paletteFor(c.def).accent, 'RIFLE', false, 0, this.commanderDef.passive === 'GUNNERY');
+      this.cue('SHOT', c.x, c.y, 0.8);
       c.cooldown = Math.max(0.02, a.cooldownSec - windup);
       return;
     }
@@ -787,6 +794,7 @@ export class SurvivorEngine {
       const m = this.squad[i];
       if (!m.alive) {
         this.addEffect('DEATH', m.x, m.y, 0, 10, 0, 0.5, this.paletteFor(m.def).primary);
+        this.cue('MEMBER_DOWN', m.x, m.y, 1);
         this.squad.splice(i, 1);
         removed = true;
       }
@@ -891,6 +899,9 @@ export class SurvivorEngine {
           // 분사 중에는 표적이 잠시 없어도 화염 줄기를 유지하고, 장판은 4판정마다 남긴다
           this.performSquadAttack(m, a, computeDmg(), range, m.channelTicks % 4 === 1);
           m.attackFlashSec = ATTACK_RELEASE_SEC;
+          if (m.channelTicks % 4 === 1) {
+            this.cue('FLAME', m.x, m.y, 0.6);
+          }
         }
         if (m.channelSec <= 0) {
           m.channelSec = 0;
@@ -928,15 +939,39 @@ export class SurvivorEngine {
         m.channelTicks = 1;
         this.performSquadAttack(m, a, computeDmg(), range, true);
         m.attackFlashSec = ATTACK_RELEASE_SEC;
+        this.cue('FLAME', m.x, m.y, 0.8);
         continue;
       }
       if (this.performSquadAttack(m, a, computeDmg(), range)) {
         m.cooldown = Math.max(0.02, cdFull - windup);
         m.attackFlashSec = ATTACK_RELEASE_SEC;
+        this.cueSquadAttack(m, a);
       } else {
         // 예비동작 사이 표적이 사라짐: 잠시 뒤 다시 노린다
         m.cooldown = 0.1;
       }
+    }
+  }
+
+  private cueSquadAttack(m: SquadMemberState, a: AttackProfile): void {
+    switch (a.style) {
+      case 'PROJECTILE':
+      case 'PIERCE': {
+        const heavy = !!a.splashRadiusPx || m.def.sprite === 'SNIPER';
+        this.cue(heavy ? 'HEAVY_SHOT' : 'SHOT', m.x, m.y, heavy ? 1 : 0.6);
+        return;
+      }
+      case 'CHAIN':
+        this.cue('ZAP', m.x, m.y, 0.8);
+        return;
+      case 'MELEE':
+        this.cue('MELEE', m.x, m.y, 0.7);
+        return;
+      case 'TURRET':
+        this.cue('TURRET', m.x, m.y, 0.8);
+        return;
+      default:
+        return;
     }
   }
 
@@ -1314,6 +1349,7 @@ export class SurvivorEngine {
             b.y = b.py = c.y + Math.sin(a) * this.spawnRadius * 0.6;
           }
           this.boss = b;
+          this.cue('BOSS_SPAWN', b.x, b.y, ev.kind === 'BOSS' ? 1.4 : 1);
           if (ev.kind === 'BOSS') {
             b.isFinalBoss = true;
             this.finalBoss = b;
@@ -1352,6 +1388,14 @@ export class SurvivorEngine {
   public announce(text: string): void {
     this.banner = text;
     this.bannerSec = 3;
+    this.cue('ALERT', this.commander.x, this.commander.y, 1);
+  }
+
+  /** 연출 신호 남기기 (상한 96: 소비하지 않는 헤드리스 실행에서도 메모리가 늘지 않는다) */
+  private cue(kind: CueKind, x: number, y: number, power = 1): void {
+    if (this.cues.length < 96) {
+      this.cues.push({ kind, x, y, power });
+    }
   }
 
   /** 화면 밖 원형 경계. 이동 중이면 진행 방향 앞쪽에 가중치를 둔다. */
@@ -1767,6 +1811,7 @@ export class SurvivorEngine {
       }
       this.kills += 1;
       this.addEffect('DEATH', e.x, e.y, 0, e.radius + 2, 0, 0.35, e.def.palette.primary);
+      this.cue(e.isBoss ? 'BOSS_DOWN' : e.isElite ? 'ELITE_DOWN' : 'ENEMY_DOWN', e.x, e.y, e.isBoss ? (e.isFinalBoss ? 1.6 : 1.2) : 0.5);
       if (e.def.xp > 0) {
         this.dropGem(e.x, e.y, e.def.xp * (e.isElite ? 8 : 1));
       }
@@ -1933,6 +1978,7 @@ export class SurvivorEngine {
 
   private explode(x: number, y: number, r: number, dmg: number, burnDps: number, burnSec: number, evolved = false): void {
     this.damageEnemiesInRadius(x, y, r, dmg);
+    this.cue('EXPLOSION', x, y, Math.min(1.5, r / 28));
     this.addEffect('BOOM', x, y, 0, r, 0, 0.34, evolved ? '#ffcf4a' : '#ffb347', x, y, evolved);
     if (burnDps > 0) {
       this.addZone(x, y, r * 0.8, burnDps, burnSec, evolved ? 'PLASMA' : 'FIRE');
@@ -1987,6 +2033,7 @@ export class SurvivorEngine {
           );
           t.flashSec = 0.1;
           t.fireCd = tp.fireCooldownSec;
+          this.cue(grenade ? 'HEAVY_SHOT' : 'SHOT', t.x, t.y, 0.4);
         } else {
           t.fireCd = 0.1;
         }
@@ -2133,6 +2180,9 @@ export class SurvivorEngine {
     if (this.hasRelic('REACTIVE_PLATING')) {
       rest *= RELIC_PLATING_TAKEN;
     }
+    if (a === this.commander) {
+      this.cue('COMMANDER_HIT', a.x, a.y, Math.min(1.5, (rest / Math.max(1, a.maxHp)) * 8));
+    }
     if (a.shield > 0) {
       const absorbed = Math.min(a.shield, rest);
       a.shield -= absorbed;
@@ -2262,6 +2312,7 @@ export class SurvivorEngine {
       g.magnetized = r.magnetized;
       if (r.collected) {
         this.gainXp(g.value);
+        this.cue('PICKUP', g.x, g.y, Math.min(1, g.value / 8));
       } else {
         this.gems[w++] = g;
       }
@@ -2306,6 +2357,7 @@ export class SurvivorEngine {
       if (offers.length > 0) {
         this.relicOffers = offers;
         this.phase = 'RELIC';
+        this.cue('RELIC', this.commander.x, this.commander.y, 1);
         this.addEffect('EVOLVE', this.commander.x, this.commander.y, 0, 24, 0, 0.8, '#ffcf4a');
         return;
       }
@@ -2314,12 +2366,14 @@ export class SurvivorEngine {
       this.pendingChests -= 1;
       this.chestResult = this.openChest();
       this.phase = 'CHEST';
+      this.cue(this.chestResult?.kind === 'EVOLVE' ? 'EVOLVE' : 'CHEST', this.commander.x, this.commander.y, 1);
       return;
     }
     if (this.pendingLevelUps > 0) {
       this.offers = this.rollOffers(3);
       this.rerollsLeft = this.rerollsPerLevelUp;
       this.phase = 'LEVEL_UP';
+      this.cue('LEVEL_UP', this.commander.x, this.commander.y, 1);
       this.addEffect('LEVEL', this.commander.x, this.commander.y, 0, 30, 0, 0.6, '#f2e27a');
     }
   }

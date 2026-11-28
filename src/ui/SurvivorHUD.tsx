@@ -2,6 +2,7 @@ import React from 'react';
 import { getModuleDef, getRelic } from '../domain/survivor/SurvivorCatalog';
 import { MAX_MODULES, MAX_SQUADS } from '../domain/survivor/SurvivorEngine';
 import { useSurvivorStore } from '../store/useSurvivorStore';
+import { SettingsToggles } from './SettingsToggles';
 import { formatTime } from './survivorLabels';
 
 export const SurvivorHUD: React.FC = () => {
@@ -110,6 +111,7 @@ export const SurvivorHUD: React.FC = () => {
           <div className="font-pixel text-xl">PAUSED</div>
           <button type="button" onClick={togglePause} className="cursor-pointer rounded bg-sky-600 px-4 py-1.5 text-white hover:bg-sky-500">계속</button>
           <button type="button" onClick={returnToTitle} className="cursor-pointer rounded border border-slate-600 px-4 py-1.5 hover:bg-slate-800">타이틀로</button>
+          <SettingsToggles className="mt-1" />
         </div>
       )}
     </div>

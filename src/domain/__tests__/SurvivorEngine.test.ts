@@ -695,5 +695,36 @@ describe('SurvivorEngine', () => {
       expect(t.alive).toBe(false);
     });
   });
+
+  describe('M8 presentation cues', () => {
+    it('emits cues for shots, kills, explosions, level-ups and commander hits, capped at 96', () => {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 901), 'ic_mortar');
+      e.step(60);
+      for (let i = 0; i < 8; i += 1) e.spawnEnemyAt('mite', e.commander.x + 90 + i * 4, e.commander.y);
+      const kinds = new Set<string>();
+      for (let i = 0; i < 30 * 8; i += 1) {
+        stepAuto(e);
+        for (const c of e.cues) kinds.add(c.kind);
+        e.cues.length = 0;
+      }
+      expect(kinds.has('SHOT') || kinds.has('HEAVY_SHOT')).toBe(true);
+      expect(kinds.has('ENEMY_DOWN')).toBe(true);
+      expect(kinds.has('EXPLOSION')).toBe(true);
+      e.cues.length = 0;
+      e.grantXp(e.xpToNext);
+      expect(e.cues.some((c) => c.kind === 'LEVEL_UP')).toBe(true);
+
+      const h = new SurvivorEngine('IRONCLAD', 'ic_marshal', 902);
+      h.commander.cooldown = 1e9;
+      h.spawnEnemyAt('brute', h.commander.x + 8, h.commander.y);
+      h.step(20);
+      expect(h.cues.some((c) => c.kind === 'COMMANDER_HIT')).toBe(true);
+
+      // 소비하지 않으면 상한까지만 쌓인다
+      const idle = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 903), 'ic_rifle');
+      for (let i = 0; i < 30 * 30; i += 1) stepAuto(idle);
+      expect(idle.cues.length).toBeLessThanOrEqual(96);
+    });
+  });
 });
 

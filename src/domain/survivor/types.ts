@@ -257,6 +257,40 @@ export type ChestResult =
 
 export type RunPhase = 'RUNNING' | 'LEVEL_UP' | 'CHEST' | 'RELIC' | 'DEFEAT' | 'VICTORY';
 
+/**
+ * 연출 신호: 엔진이 남기고 앱 계층(사운드·화면 흔들림)이 소비한다.
+ * power는 0~1+ 세기, (x, y)는 월드 좌표.
+ */
+export type CueKind =
+  | 'SHOT'
+  | 'HEAVY_SHOT'
+  | 'FLAME'
+  | 'ZAP'
+  | 'MELEE'
+  | 'TURRET'
+  | 'EXPLOSION'
+  | 'ENEMY_DOWN'
+  | 'ELITE_DOWN'
+  | 'BOSS_SPAWN'
+  | 'BOSS_DOWN'
+  | 'COMMANDER_HIT'
+  | 'MEMBER_DOWN'
+  | 'PICKUP'
+  | 'LEVEL_UP'
+  | 'CHEST'
+  | 'RELIC'
+  | 'EVOLVE'
+  | 'ALERT'
+  | 'DEFEAT'
+  | 'VICTORY';
+
+export interface GameCue {
+  kind: CueKind;
+  x: number;
+  y: number;
+  power: number;
+}
+
 /** 유물: 중간 보스를 쓰러뜨리면 3개 중 1개를 고르는 런 한정 영구 효과 */
 export type RelicId =
   | 'NANO_MEDKIT'

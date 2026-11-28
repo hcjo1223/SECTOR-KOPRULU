@@ -398,6 +398,10 @@ export class SurvivorRenderer {
   private fxSpriteCursor = 0;
   private frame = 0;
   private timeSec = 0;
+  /** 화면 흔들림: 남은 시간·전체 시간·최대 진폭(px) */
+  private shakeSec = 0;
+  private shakeDur = 0;
+  private shakeAmp = 0;
   private viewW = VIRTUAL_WIDTH;
   private viewH = VIRTUAL_HEIGHT;
 
@@ -429,7 +433,19 @@ export class SurvivorRenderer {
     this.ground.height = viewH;
   }
 
+  /** 화면 흔들림 요청: 더 센 흔들림이 들어오면 갱신한다 (최대 4px) */
+  public addShake(amp: number, sec: number): void {
+    const a = Math.min(4, amp);
+    const remaining = this.shakeDur > 0 ? this.shakeAmp * (this.shakeSec / this.shakeDur) : 0;
+    if (a >= remaining) {
+      this.shakeAmp = a;
+      this.shakeSec = sec;
+      this.shakeDur = sec;
+    }
+  }
+
   public clear(): void {
+    this.shakeSec = 0;
     for (const p of this.sprites.values()) {
       p.sprite.destroy();
     }
@@ -460,8 +476,17 @@ export class SurvivorRenderer {
     const c = engine.commander;
     const camX = lerp(c.px, c.x);
     const camY = lerp(c.py, c.y);
-    const ox = Math.round(this.viewW / 2 - camX);
-    const oy = Math.round(this.viewH / 2 - camY);
+    let ox = Math.round(this.viewW / 2 - camX);
+    let oy = Math.round(this.viewH / 2 - camY);
+    if (this.shakeSec > 0) {
+      // 정수 픽셀 진폭으로만 흔든다 (서브픽셀 번짐 없음), 남은 시간에 비례해 잦아든다
+      this.shakeSec = Math.max(0, this.shakeSec - deltaMs / 1000);
+      const amp = Math.round(this.shakeAmp * (this.shakeSec / Math.max(0.001, this.shakeDur)));
+      if (amp > 0) {
+        ox += Math.round((Math.random() * 2 - 1) * amp);
+        oy += Math.round((Math.random() * 2 - 1) * amp);
+      }
+    }
     this.world.position.set(ox, oy);
     this.ground.tilePosition.set(ox, oy);
 
