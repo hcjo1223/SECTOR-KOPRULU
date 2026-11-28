@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assignSlots, buildSlotOffsets, capacityForRings, pickActiveSlots } from '../survivor/Formation';
+import { stepEnemyAI, type EnemyAIContext } from '../survivor/EnemyBehaviors';
 import { SpatialHash } from '../survivor/SpatialHash';
 import { getAllEnemies, getAllModules, getAllSquadUnits, getFactions, getSquadUnitDef, getWaveTable } from '../survivor/SurvivorCatalog';
 import {
@@ -7,6 +8,7 @@ import {
   attackWindupSec,
   MARK_DAMAGE_MUL,
   MAX_SQUADS,
+  offerKey,
   squadHeadcount,
   SURVIVOR_DT,
   SurvivorEngine,
@@ -408,8 +410,15 @@ describe('SurvivorEngine', () => {
     prism.attackTimer = 0.01;
     e.step(2);
     expect(spiker.attackFlashSec).toBeGreaterThan(0);
-    expect(prism.attackFlashSec).toBeGreaterThan(0);
+    // 프리즘은 0.55초 조준선 예고 뒤 3연사
+    let prismFlash = 0;
     const visuals = new Set(e.enemyShots.map((s) => s.visual));
+    for (let i = 0; i < 30; i += 1) {
+      e.step(1);
+      prismFlash = Math.max(prismFlash, prism.attackFlashSec);
+      for (const s of e.enemyShots) visuals.add(s.visual);
+    }
+    expect(prismFlash).toBeGreaterThan(0);
     expect(visuals.has('SPIKE')).toBe(true);
     expect(visuals.has('PRISM')).toBe(true);
   });
@@ -574,6 +583,148 @@ describe('SurvivorEngine', () => {
     }
     expect(shots).toBe(20);
     expect(hits).toBe(20);
+  });
+
+  it('level-up screen allows rerolling one card once, without duplicating the other cards', () => {
+    for (let seed = 1; seed <= 15; seed += 1) {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 600 + seed), 'ic_rifle');
+      e.grantXp(e.xpToNext);
+      expect(e.phase).toBe('LEVEL_UP');
+      expect(e.rerollsLeft).toBe(1);
+      const before = e.offers.map(offerKey);
+      expect(e.rerollOffer(1)).toBe(true);
+      const after = e.offers.map(offerKey);
+      expect(after[0]).toBe(before[0]);
+      expect(after[2]).toBe(before[2]);
+      expect(before).not.toContain(after[1]);
+      expect(new Set(after).size).toBe(3);
+      // 같은 화면에서는 한 번만
+      expect(e.rerollsLeft).toBe(0);
+      expect(e.rerollOffer(0)).toBe(false);
+      e.chooseOffer(0);
+      // 다음 레벨업 화면에서는 다시 1회
+      e.grantXp(e.xpToNext);
+      expect(e.rerollsLeft).toBe(1);
+    }
+  });
+
+  it('supply chests only upgrade squads and modules the player already owns', () => {
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 700 + seed), 'ic_rifle');
+      e.applyOfferDirect({ kind: 'NEW_MODULE', moduleId: 'CORE' });
+      e.grantChest();
+      expect(e.phase).toBe('CHEST');
+      const r = e.chestResult!;
+      expect(r.kind).toBe('UPGRADE');
+      if (r.kind === 'UPGRADE') {
+        expect(['SQUAD_LEVEL', 'MODULE_LEVEL', 'REINFORCE']).toContain(r.offer.kind);
+        if (r.offer.kind === 'SQUAD_LEVEL') expect(r.offer.unitId).toBe('ic_rifle');
+        if (r.offer.kind === 'MODULE_LEVEL') expect(r.offer.moduleId).toBe('CORE');
+      }
+      e.confirmChest();
+    }
+  });
+
+  describe('M7 enemy faction behaviours', () => {
+    it('hive clawlings frenzy (x1.5 speed) when 4+ of them are packed together', () => {
+      const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 801);
+      e.commander.cooldown = 1e9;
+      const lone = e.spawnEnemyAt('clawling', e.commander.x + 150, e.commander.y);
+      const pack = [0, 1, 2, 3].map((k) => e.spawnEnemyAt('clawling', e.commander.x - 150 + k * 3, e.commander.y + k * 3));
+      (e as unknown as { rebuildHash(): void }).rebuildHash();
+      const ai = (e as unknown as { ai: EnemyAIContext }).ai;
+      const speed = (v: { x: number; y: number }): number => Math.hypot(v.x, v.y);
+      expect(speed(stepEnemyAI(lone, ai, SURVIVOR_DT))).toBeCloseTo(lone.speed, 5);
+      expect(speed(stepEnemyAI(pack[0], ai, SURVIVOR_DT))).toBeCloseTo(pack[0].speed * 1.5, 5);
+    });
+
+    it('hive spikers fire a three-spike volley', () => {
+      const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 802);
+      e.commander.cooldown = 1e9;
+      const sp = e.spawnEnemyAt('hive_spiker', e.commander.x + 110, e.commander.y);
+      sp.attackTimer = 0.01;
+      e.step(1);
+      expect(e.enemyShots.filter((s) => s.visual === 'SPIKE').length).toBe(3);
+    });
+
+    it('lumen wardens shield nearby allies and block frontal damage', () => {
+      const e = new SurvivorEngine('IRONCLAD', 'ic_marshal', 803);
+      e.commander.cooldown = 1e9;
+      const w = e.spawnEnemyAt('lumen_warden', e.commander.x + 150, e.commander.y);
+      const ally = e.spawnEnemyAt('lumen_orb', w.x + 20, w.y);
+      w.spawnTimer = 0.01;
+      e.step(1);
+      expect(ally.shield).toBeGreaterThan(0);
+    });
+  });
+
+  describe('M7 relics', () => {
+    it('defeating a mid-boss opens a choice of 3 distinct relics; the pick is kept for the run', () => {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 811), 'ic_rifle');
+      const boss = e.spawnEnemyAt('queen', e.commander.x + 200, e.commander.y);
+      boss.isBoss = true;
+      boss.hp = 0;
+      boss.alive = false;
+      e.step(1);
+      expect(e.phase).toBe('RELIC');
+      expect(e.relicOffers).toHaveLength(3);
+      expect(new Set(e.relicOffers).size).toBe(3);
+      const pick = e.relicOffers[1];
+      expect(e.chooseRelic(1)).toBe(true);
+      expect(e.relics).toEqual([pick]);
+      expect(e.minibossKills).toBe(1);
+      expect(e.getHud().relics).toEqual([pick]);
+    });
+
+    it('relic effects: plating, generator, execution protocol, salvage', () => {
+      const base = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 812), 'ic_rifle');
+      const withR = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 812), 'ic_rifle');
+      for (const id of ['REACTIVE_PLATING', 'GENERATOR', 'EXECUTION_PROTOCOL', 'SALVAGE_DRONE'] as const) withR.grantRelic(id);
+      expect(withR.damageMul() / base.damageMul()).toBeCloseTo(1.12, 5);
+      expect(withR.pickupRadius / base.pickupRadius).toBeCloseTo(1.4, 5);
+      const dmgAlly = (en: SurvivorEngine): number => {
+        const c = en.commander;
+        const h = c.hp;
+        (en as unknown as { damageAlly(a: unknown, d: number): void }).damageAlly(c, 50);
+        return h - c.hp;
+      };
+      expect(dmgAlly(withR) / dmgAlly(base)).toBeCloseTo(0.88, 5);
+      const t = withR.spawnEnemyAt('brute', 300, 300);
+      t.hp = t.maxHp * 0.12;
+      (withR as unknown as { damageEnemy(t: unknown, d: number, b: number, x: number): void }).damageEnemy(t, t.maxHp * 0.03, 1, 0);
+      expect(t.alive).toBe(false);
+    });
+  });
+
+  describe('M8 presentation cues', () => {
+    it('emits cues for shots, kills, explosions, level-ups and commander hits, capped at 96', () => {
+      const e = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 901), 'ic_mortar');
+      e.step(60);
+      for (let i = 0; i < 8; i += 1) e.spawnEnemyAt('mite', e.commander.x + 90 + i * 4, e.commander.y);
+      const kinds = new Set<string>();
+      for (let i = 0; i < 30 * 8; i += 1) {
+        stepAuto(e);
+        for (const c of e.cues) kinds.add(c.kind);
+        e.cues.length = 0;
+      }
+      expect(kinds.has('SHOT') || kinds.has('HEAVY_SHOT')).toBe(true);
+      expect(kinds.has('ENEMY_DOWN')).toBe(true);
+      expect(kinds.has('EXPLOSION')).toBe(true);
+      e.cues.length = 0;
+      e.grantXp(e.xpToNext);
+      expect(e.cues.some((c) => c.kind === 'LEVEL_UP')).toBe(true);
+
+      const h = new SurvivorEngine('IRONCLAD', 'ic_marshal', 902);
+      h.commander.cooldown = 1e9;
+      h.spawnEnemyAt('brute', h.commander.x + 8, h.commander.y);
+      h.step(20);
+      expect(h.cues.some((c) => c.kind === 'COMMANDER_HIT')).toBe(true);
+
+      // 소비하지 않으면 상한까지만 쌓인다
+      const idle = withStarter(new SurvivorEngine('IRONCLAD', 'ic_marshal', 903), 'ic_rifle');
+      for (let i = 0; i < 30 * 30; i += 1) stepAuto(idle);
+      expect(idle.cues.length).toBeLessThanOrEqual(96);
+    });
   });
 });
 

@@ -1,6 +1,9 @@
 import { Application, TextureStyle } from 'pixi.js';
 import { SURVIVOR_DT } from '../domain/survivor/SurvivorEngine';
+import type { GameCue } from '../domain/survivor/types';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useSurvivorStore } from '../store/useSurvivorStore';
+import { SurvivorAudio } from './SurvivorAudio';
 import { SurvivorInput } from './SurvivorInput';
 import { SurvivorRenderer, VIRTUAL_HEIGHT, VIRTUAL_WIDTH } from './SurvivorRenderer';
 
@@ -36,6 +39,8 @@ export class SurvivorApp {
   private baseW = VIRTUAL_WIDTH;
   private baseH = VIRTUAL_HEIGHT;
   private zoomFactor = 1;
+  private readonly audio = new SurvivorAudio();
+  private readonly unlockAudio = (): void => this.audio.unlock();
 
   public async mount(container: HTMLElement): Promise<void> {
     if (this.app || this.destroyed) {
@@ -73,6 +78,9 @@ export class SurvivorApp {
     this.fitToHost();
 
     SurvivorInput.attach(() => useSurvivorStore.getState().togglePause());
+    // 브라우저 자동 재생 정책: 첫 사용자 입력에서 오디오를 깨운다
+    window.addEventListener('pointerdown', this.unlockAudio);
+    window.addEventListener('keydown', this.unlockAudio);
 
     app.ticker.add((ticker) => this.frame(ticker.deltaMS));
   }
@@ -152,6 +160,7 @@ export class SurvivorApp {
       }
     }
 
+    this.consumeCues(engine.cues, engine.commander.x, engine.commander.y);
     const alpha = running ? Math.min(1, this.accMs / DT_MS) : 1;
     renderer.render(engine, alpha, running ? deltaMs : 0);
 
@@ -163,8 +172,50 @@ export class SurvivorApp {
     }
   }
 
+  /** 엔진이 남긴 연출 신호를 소리·화면 흔들림으로 바꾸고 큐를 비운다 */
+  private consumeCues(cues: GameCue[], cx: number, cy: number): void {
+    if (cues.length === 0) {
+      return;
+    }
+    const settings = useSettingsStore.getState();
+    this.audio.configure(settings.soundOn, settings.volume);
+    const renderer = this.renderer;
+    for (const cue of cues) {
+      this.audio.play(cue, cx, cy);
+      if (!settings.shakeOn || !renderer) {
+        continue;
+      }
+      switch (cue.kind) {
+        case 'EXPLOSION': {
+          const d = Math.hypot(cue.x - cx, cue.y - cy);
+          if (d < 110) {
+            renderer.addShake(1 + cue.power * (1 - d / 110) * 2, 0.18);
+          }
+          break;
+        }
+        case 'COMMANDER_HIT':
+          renderer.addShake(1 + cue.power * 2, 0.2);
+          break;
+        case 'BOSS_SPAWN':
+          renderer.addShake(3, 0.45);
+          break;
+        case 'BOSS_DOWN':
+          renderer.addShake(cue.power >= 1.5 ? 4 : 3, 0.55);
+          break;
+        case 'DEFEAT':
+          renderer.addShake(4, 0.6);
+          break;
+        default:
+          break;
+      }
+    }
+    cues.length = 0;
+  }
+
   public destroy(): void {
     this.destroyed = true;
+    window.removeEventListener('pointerdown', this.unlockAudio);
+    window.removeEventListener('keydown', this.unlockAudio);
     SurvivorInput.detach();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;

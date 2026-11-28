@@ -1,4 +1,5 @@
 import React from 'react';
+import { useMetaStore } from '../store/useMetaStore';
 import { useSurvivorStore } from '../store/useSurvivorStore';
 import { formatTime } from './survivorLabels';
 
@@ -6,6 +7,8 @@ export const ResultModal: React.FC = () => {
   const hud = useSurvivorStore((s) => s.hud);
   const restartRun = useSurvivorStore((s) => s.restartRun);
   const returnToTitle = useSurvivorStore((s) => s.returnToTitle);
+  const runReward = useSurvivorStore((s) => s.runReward);
+  const dataTotal = useMetaStore((s) => s.meta.data);
   if (!hud || (hud.phase !== 'DEFEAT' && hud.phase !== 'VICTORY')) {
     return null;
   }
@@ -24,7 +27,14 @@ export const ResultModal: React.FC = () => {
           <dd className="text-right">{hud.level}</dd>
           <dt className="text-left text-slate-400">남은 부대원</dt>
           <dd className="text-right">{hud.squadCount}</dd>
+          <dt className="text-left text-slate-400">격파한 중간 보스</dt>
+          <dd className="text-right">{hud.minibossKills}</dd>
         </dl>
+        {runReward !== null && (
+          <div className="mt-3 rounded border border-cyan-800/70 bg-cyan-950/40 px-2 py-1.5 font-mono-tech text-xs text-cyan-200">
+            전술 데이터 +{runReward} <span className="text-slate-400">(보유 {dataTotal}) · 타이틀의 본부에서 사용</span>
+          </div>
+        )}
         <div className="mt-4 flex gap-2">
           <button type="button" onClick={restartRun} className="flex-1 cursor-pointer rounded bg-sky-600 py-2 text-sm text-white hover:bg-sky-500">다시 출격</button>
           <button type="button" onClick={returnToTitle} className="flex-1 cursor-pointer rounded border border-slate-600 py-2 text-sm hover:bg-slate-800">타이틀</button>

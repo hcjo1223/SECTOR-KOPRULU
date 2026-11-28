@@ -1,5 +1,7 @@
 import { create } from 'zustand';
+import { isCommanderUnlocked, metaBonuses } from '../domain/survivor/MetaProgress';
 import { SurvivorEngine } from '../domain/survivor/SurvivorEngine';
+import { useMetaStore } from './useMetaStore';
 import type { FactionId, HudSnapshot, LevelUpOffer } from '../domain/survivor/types';
 
 export type SurvivorScreen = 'TITLE' | 'RUN';
@@ -12,6 +14,9 @@ interface SurvivorStoreState {
   paused: boolean;
   /** 엔진 교체 시 증가 → 렌더러가 스프라이트 풀을 비운다 */
   runToken: number;
+  /** 이번 런 종료 보상(전술 데이터). 아직 끝나지 않았으면 null */
+  runReward: number | null;
+  rewardedToken: number;
 
   startRun: (faction: FactionId, commanderId?: string) => void;
   confirmChest: () => void;
@@ -20,6 +25,8 @@ interface SurvivorStoreState {
   togglePause: () => void;
   setPaused: (paused: boolean) => void;
   chooseOffer: (index: number) => void;
+  rerollOffer: (index: number) => void;
+  chooseRelic: (index: number) => void;
   syncFromEngine: () => void;
 }
 
@@ -30,9 +37,16 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
   offers: [],
   paused: false,
   runToken: 0,
+  runReward: null,
+  rewardedToken: -1,
 
   startRun: (faction, commanderId) => {
-    const engine = new SurvivorEngine(faction, commanderId);
+    const meta = useMetaStore.getState().meta;
+    if (commanderId && !isCommanderUnlocked(meta, commanderId)) {
+      return;
+    }
+    // 본부 업그레이드를 이번 런에 반영
+    const engine = new SurvivorEngine(faction, commanderId, Date.now(), metaBonuses(meta));
     fastForwardFromUrl(engine);
     set((s) => ({
       screen: 'RUN',
@@ -41,6 +55,7 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
       offers: [],
       paused: false,
       runToken: s.runToken + 1,
+      runReward: null,
     }));
   },
 
@@ -75,6 +90,20 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
     }
   },
 
+  rerollOffer: (index) => {
+    const engine = get().engine;
+    if (engine && engine.rerollOffer(index)) {
+      set({ hud: engine.getHud(), offers: [...engine.offers] });
+    }
+  },
+
+  chooseRelic: (index) => {
+    const engine = get().engine;
+    if (engine && engine.chooseRelic(index)) {
+      set({ hud: engine.getHud(), offers: [...engine.offers] });
+    }
+  },
+
   confirmChest: () => {
     const engine = get().engine;
     if (engine && engine.confirmChest()) {
@@ -89,6 +118,16 @@ export const useSurvivorStore = create<SurvivorStoreState>((set, get) => ({
     }
     const prevPhase = get().hud?.phase;
     const hud = engine.getHud();
+    // 런 종료: 전술 데이터 보상을 한 번만 지급
+    if ((hud.phase === 'DEFEAT' || hud.phase === 'VICTORY') && get().rewardedToken !== get().runToken) {
+      const earned = useMetaStore.getState().award({
+        elapsedSec: hud.elapsedSec,
+        kills: hud.kills,
+        minibossKills: hud.minibossKills,
+        victory: hud.phase === 'VICTORY',
+      });
+      set({ runReward: earned, rewardedToken: get().runToken });
+    }
     if (prevPhase !== hud.phase || hud.phase === 'LEVEL_UP') {
       set({ hud, offers: [...engine.offers] });
     } else {
@@ -118,6 +157,10 @@ function fastForwardFromUrl(engine: SurvivorEngine): void {
     }
     if (engine.phase === 'CHEST') {
       engine.confirmChest();
+      continue;
+    }
+    if (engine.phase === 'RELIC') {
+      engine.chooseRelic(0);
       continue;
     }
     c.hp = c.maxHp;

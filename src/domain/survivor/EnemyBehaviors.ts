@@ -1,4 +1,4 @@
-import type { CommanderState, EffectKind, EnemyShotVisual, EnemyState, Vec2 } from './types';
+import type { CommanderState, EffectKind, EnemyBehavior, EnemyShotVisual, EnemyState, Vec2 } from './types';
 
 /** 적 AI가 엔진에 요청할 수 있는 동작 */
 export interface EnemyAIContext {
@@ -22,7 +22,14 @@ export interface EnemyAIContext {
   shieldEnemiesNear(x: number, y: number, radius: number, amount: number): void;
   effect(kind: EffectKind, x: number, y: number, radius: number, life: number, color: string, x2?: number, y2?: number): void;
   announce(text: string): void;
+  /** (x, y) 반경 r 안의 같은 행동 패턴 적 수 (자기 자신 포함) */
+  countEnemiesNear(x: number, y: number, r: number, behavior: EnemyBehavior): number;
 }
+
+/** 군체 광란: 반경 안 동족 수 기준과 배속 */
+export const SWARM_RADIUS_PX = 52;
+export const SWARM_FRENZY_COUNT = 4;
+export const SWARM_FRENZY_MUL = 1.5;
 
 const ZERO: Vec2 = { x: 0, y: 0 };
 
@@ -249,6 +256,79 @@ export function stepEnemyAI(e: EnemyState, ctx: EnemyAIContext, dt: number): Vec
       return chase(e, ctx, phase === 3 ? 1.6 : 1);
     }
 
+    case 'SWARM': {
+      // 동족이 뭉쳐 있으면 광란: 이동속도 ×1.5 (뭉치기 전에 끊어내야 한다)
+      const n = ctx.countEnemiesNear(e.x, e.y, SWARM_RADIUS_PX, 'SWARM');
+      return chase(e, ctx, n >= SWARM_FRENZY_COUNT ? SWARM_FRENZY_MUL : 1);
+    }
+
+    case 'VOLLEY': {
+      // 가시 3갈래 일제 사격, 거리 유지
+      const t = toCommander(e, ctx);
+      e.attackTimer -= dt;
+      if (e.attackTimer <= 0 && t.dist < 170) {
+        e.attackTimer = 3.0;
+        e.facingAngle = Math.atan2(t.dy, t.dx);
+        e.attackFlashSec = 0.21;
+        const base = Math.atan2(t.dy, t.dx);
+        for (const off of [-0.26, 0, 0.26]) {
+          ctx.fireShot(e.x, e.y, Math.cos(base + off), Math.sin(base + off), 100, e.damage, 3, e.def.palette.accent, 'SPIKE');
+        }
+      }
+      if (t.dist > 135) {
+        return chase(e, ctx);
+      }
+      if (t.dist < 95) {
+        return { x: -t.dx * e.speed, y: -t.dy * e.speed };
+      }
+      return { x: t.dy * e.speed * 0.55, y: -t.dx * e.speed * 0.55 };
+    }
+
+    case 'WARDEN': {
+      // 정면 방패(피해 감소는 shellReduction) + 5초마다 주변 교단에 보호막
+      e.spawnTimer -= dt;
+      if (e.spawnTimer <= 0) {
+        e.spawnTimer = 5;
+        ctx.shieldEnemiesNear(e.x, e.y, 80, 16);
+        ctx.effect('SHIELD_PULSE', e.x, e.y, 80, 0.5, e.def.palette.accent);
+      }
+      return chase(e, ctx);
+    }
+
+    case 'PRISM': {
+      // 조준선 0.55초 예고 → 광자탄 3연사(0.14초 간격). 연사 중에는 멈춘다.
+      const t = toCommander(e, ctx);
+      if (e.mode === 'AIM') {
+        e.modeSec -= dt;
+        if (e.modeSec <= 0) {
+          e.dashCount -= 1;
+          e.attackFlashSec = 0.21;
+          ctx.fireShot(e.x, e.y, e.dirX, e.dirY, 135, e.damage, 3, e.def.palette.accent, 'PRISM');
+          if (e.dashCount > 0) {
+            e.modeSec = 0.14;
+          } else {
+            setMode(e, 'CHASE', 0);
+            e.attackTimer = 3.4;
+          }
+        }
+        return ZERO;
+      }
+      e.attackTimer -= dt;
+      if (e.attackTimer <= 0 && t.dist < 175) {
+        e.dashCount = 3;
+        e.facingAngle = Math.atan2(t.dy, t.dx);
+        beginAim(e, ctx, 0.55, 170, e.def.palette.accent);
+        return ZERO;
+      }
+      if (t.dist > 140) {
+        return chase(e, ctx);
+      }
+      if (t.dist < 100) {
+        return { x: -t.dx * e.speed, y: -t.dy * e.speed };
+      }
+      return { x: -t.dy * e.speed * 0.5, y: t.dx * e.speed * 0.5 };
+    }
+
     case 'SPLITTER':
     case 'SHELLED':
     case 'CHASE':
@@ -259,7 +339,7 @@ export function stepEnemyAI(e: EnemyState, ctx: EnemyAIContext, dt: number): Vec
 
 /** 갑각충: 진행 방향(지휘관 쪽) 정면에서 들어온 피해 70% 감소 */
 export function shellReduction(e: EnemyState, commander: CommanderState, srcX: number, srcY: number): number {
-  if (e.behavior !== 'SHELLED') {
+  if (e.behavior !== 'SHELLED' && e.behavior !== 'WARDEN') {
     return 1;
   }
   const hx = commander.x - e.x;

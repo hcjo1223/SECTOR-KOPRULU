@@ -1,7 +1,8 @@
 import React from 'react';
-import { getModuleDef } from '../domain/survivor/SurvivorCatalog';
+import { getModuleDef, getRelic } from '../domain/survivor/SurvivorCatalog';
 import { MAX_MODULES, MAX_SQUADS } from '../domain/survivor/SurvivorEngine';
 import { useSurvivorStore } from '../store/useSurvivorStore';
+import { SettingsToggles } from './SettingsToggles';
 import { formatTime } from './survivorLabels';
 
 export const SurvivorHUD: React.FC = () => {
@@ -90,6 +91,18 @@ export const SurvivorHUD: React.FC = () => {
               <span key={`em${i}`} className="rounded border border-dashed border-slate-700 px-1 text-slate-600">모듈</span>
             ))}
           </div>
+          {hud.relics.length > 0 && (
+            <div className="mt-0.5 flex flex-wrap justify-end gap-0.5">
+              {hud.relics.map((id) => {
+                const r = getRelic(id);
+                return (
+                  <span key={id} title={`${r.name}: ${r.summary}`} className="rounded border border-amber-700/70 bg-amber-950/60 px-1 text-amber-300">
+                    {r.icon} {r.name}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -98,6 +111,7 @@ export const SurvivorHUD: React.FC = () => {
           <div className="font-pixel text-xl">PAUSED</div>
           <button type="button" onClick={togglePause} className="cursor-pointer rounded bg-sky-600 px-4 py-1.5 text-white hover:bg-sky-500">계속</button>
           <button type="button" onClick={returnToTitle} className="cursor-pointer rounded border border-slate-600 px-4 py-1.5 hover:bg-slate-800">타이틀로</button>
+          <SettingsToggles className="mt-1" />
         </div>
       )}
     </div>

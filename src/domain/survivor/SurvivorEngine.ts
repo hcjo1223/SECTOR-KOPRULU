@@ -1,6 +1,6 @@
 import { shellReduction, stepEnemyAI, type EnemyAIContext } from './EnemyBehaviors';
 import { assignSlots, buildSlotOffsets, capacityForRings, MAX_RINGS } from './Formation';
-import { getCommander, getEnemyDef, getFaction, getSquadUnitDef, getWaveTable } from './SurvivorCatalog';
+import { getAllRelics, getCommander, getEnemyDef, getFaction, getSquadUnitDef, getWaveTable } from './SurvivorCatalog';
 import { SpatialHash } from './SpatialHash';
 import type {
   Actor,
@@ -16,11 +16,15 @@ import type {
   EnemyState,
   FactionDef,
   FactionId,
+  CueKind,
+  GameCue,
   FactionPalette,
   GemState,
   HazardState,
   HudSnapshot,
   LevelUpOffer,
+  MetaBonuses,
+  RelicId,
   TurretProfile,
   TurretState,
   ModuleId,
@@ -63,6 +67,23 @@ const FORTIFY_SHIELD_FILL_PER_SEC = 0.25;
 // 돌격 지휘관 [선봉 돌파]: 이동 중에도 포진 공격력 유지, 이동속도, 전열 피해 감소
 const VANGUARD_MOVE_SPEED_MUL = 1.15;
 export const VANGUARD_FRONT_DAMAGE_TAKEN_MUL = 0.75;
+
+/** 유물 수치 */
+const RELIC_MEDKIT_REGEN = 1.5;
+const RELIC_DATALINK_TEMPO = 1.12;
+const RELIC_GENERATOR_DMG = 1.12;
+const RELIC_PLATING_TAKEN = 0.88;
+const RELIC_SALVAGE_XP = 1.15;
+const RELIC_SALVAGE_PICKUP = 1.4;
+const RELIC_RESERVE_INTERVAL_SEC = 18;
+const RELIC_FORTRESS_ENTRENCH_DMG = 1.6;
+const RELIC_EXECUTE_PCT = 0.1;
+const RELIC_CHAIN_CHANCE = 0.18;
+const RELIC_CHAIN_RADIUS = 26;
+/** 한 번에 보여주는 유물 선택지 수 */
+const RELIC_CHOICES = 3;
+
+export const NO_META: MetaBonuses = { maxHpMul: 1, damageMul: 1, xpMul: 1, pickupMul: 1, extraRerolls: 0 };
 
 /** 포탑: 동시 유지 전체 상한 */
 const MAX_TURRETS = 40;
@@ -161,6 +182,20 @@ export class SurvivorEngine {
   public bossSpawned = false;
   public banner: string | null = null;
   public overchargeStacks = 0;
+  /** 이번 레벨업 화면에서 남은 다시 뽑기 횟수 */
+  public rerollsLeft = 0;
+  /** 레벨업마다 주어지는 다시 뽑기 횟수 */
+  public rerollsPerLevelUp = 1;
+  /** 연출 신호 큐: 앱 계층이 매 프레임 비운다 (헤드리스에서는 상한까지만 쌓인다) */
+  public readonly cues: GameCue[] = [];
+  /** 보유 유물과, 유물 선택 화면의 선택지 */
+  public readonly relics: RelicId[] = [];
+  public relicOffers: RelicId[] = [];
+  /** 처치한 중간 보스 수 (메타 보상 계산용) */
+  public minibossKills = 0;
+  private pendingRelics = 0;
+  private reserveTimer = 0;
+  private readonly meta: MetaBonuses;
 
   private readonly rng: () => number;
   private readonly hash = new SpatialHash(32);
@@ -179,7 +214,9 @@ export class SurvivorEngine {
   private bannerSec = 0;
   private readonly ai: EnemyAIContext;
 
-  constructor(factionId: FactionId, commanderId?: string, seed: number = Date.now()) {
+  constructor(factionId: FactionId, commanderId?: string, seed: number = Date.now(), meta: Partial<MetaBonuses> = {}) {
+    this.meta = { ...NO_META, ...meta };
+    this.rerollsPerLevelUp = 1 + this.meta.extraRerolls;
     this.faction = getFaction(factionId);
     this.commanderDef = getCommander(factionId, commanderId);
     this.waves = getWaveTable();
@@ -188,7 +225,7 @@ export class SurvivorEngine {
 
     const cd = this.commanderDef;
     this.commander = {
-      ...this.makeActor(0, 0, cd.radius, cd.hp, cd.shield),
+      ...this.makeActor(0, 0, cd.radius, cd.hp * this.meta.maxHpMul, cd.shield),
       def: cd,
       cooldown: 0,
       dirX: 1,
@@ -232,7 +269,31 @@ export class SurvivorEngine {
   }
 
   public get pickupRadius(): number {
-    return this.commanderDef.pickupRadius * (1 + 0.2 * this.moduleLevel('BEACON'));
+    return (
+      this.commanderDef.pickupRadius *
+      (1 + 0.2 * this.moduleLevel('BEACON')) *
+      this.meta.pickupMul *
+      (this.hasRelic('SALVAGE_DRONE') ? RELIC_SALVAGE_PICKUP : 1)
+    );
+  }
+
+  /** 체력 배율: 강화 장갑 모듈 × 본부 업그레이드 */
+  public hpMul(): number {
+    return (1 + 0.15 * this.moduleLevel('ARMOR')) * this.meta.maxHpMul;
+  }
+
+  /** 모든 아군 공격 피해 배율: 증폭 코어 × 과충전 × 과급 발전기 × 본부 업그레이드 */
+  public damageMul(): number {
+    return (
+      (1 + 0.1 * this.moduleLevel('CORE')) *
+      this.overchargeMul *
+      (this.hasRelic('GENERATOR') ? RELIC_GENERATOR_DMG : 1) *
+      this.meta.damageMul
+    );
+  }
+
+  public hasRelic(id: RelicId): boolean {
+    return this.relics.includes(id);
   }
 
   public get speedMul(): number {
@@ -297,11 +358,58 @@ export class SurvivorEngine {
     this.pendingLevelUps -= 1;
     if (this.pendingLevelUps > 0) {
       this.offers = this.rollOffers(3);
+      this.rerollsLeft = this.rerollsPerLevelUp;
     } else {
       this.offers = [];
       this.phase = 'RUNNING';
     }
     return true;
+  }
+
+  /**
+   * 레벨업 선택지 한 장을 다시 뽑는다 (레벨업마다 rerollsPerLevelUp회).
+   * 이미 보이는 선택지와 겹치지 않는 새 선택지로 바뀐다. 바꿀 것이 없으면 기회를 쓰지 않는다.
+   */
+  public rerollOffer(index: number): boolean {
+    if (this.phase !== 'LEVEL_UP' || this.rerollsLeft <= 0 || !this.offers[index]) {
+      return false;
+    }
+    const next = this.rollOffers(1, { exclude: this.offers })[0];
+    if (!next || this.offers.some((o) => offerKey(o) === offerKey(next))) {
+      return false;
+    }
+    this.offers = this.offers.map((o, k) => (k === index ? next : o));
+    this.rerollsLeft -= 1;
+    return true;
+  }
+
+  /** 유물 선택 → 진행 재개 (남은 레벨업·상자가 있으면 이어서 연다) */
+  public chooseRelic(index: number): boolean {
+    if (this.phase !== 'RELIC') {
+      return false;
+    }
+    const id = this.relicOffers[index];
+    if (!id) {
+      return false;
+    }
+    this.relics.push(id);
+    this.relicOffers = [];
+    this.phase = 'RUNNING';
+    this.maybeOpenChestOrLevelUp();
+    return true;
+  }
+
+  /** 테스트·디버그용: 유물 직접 지급 */
+  public grantRelic(id: RelicId): void {
+    if (!this.relics.includes(id)) {
+      this.relics.push(id);
+    }
+  }
+
+  /** 테스트·디버그용: 유물 선택 화면 열기 */
+  public grantRelicChoice(): void {
+    this.pendingRelics += 1;
+    this.maybeOpenChestOrLevelUp();
   }
 
   /** 보급 상자 결과 확인 → 진행 재개 */
@@ -349,6 +457,9 @@ export class SurvivorEngine {
       })),
       modules: this.modules.map((m) => ({ ...m })),
       chestResult: this.chestResult,
+      relics: [...this.relics],
+      relicOffers: [...this.relicOffers],
+      minibossKills: this.minibossKills,
     };
   }
 
@@ -410,10 +521,12 @@ export class SurvivorEngine {
 
     if (!this.commander.alive) {
       this.phase = 'DEFEAT';
+      this.cue('DEFEAT', this.commander.x, this.commander.y, 1);
       return;
     }
     if (this.bossSpawned && this.finalBoss && !this.finalBoss.alive) {
       this.phase = 'VICTORY';
+      this.cue('VICTORY', this.commander.x, this.commander.y, 1);
       return;
     }
     this.maybeOpenChestOrLevelUp();
@@ -485,8 +598,9 @@ export class SurvivorEngine {
         return;
       }
       c.attackFlashSec = ATTACK_RELEASE_SEC;
-      const dmg = a.damage * (1 + 0.1 * this.moduleLevel('CORE')) * this.overchargeMul;
+      const dmg = a.damage * this.damageMul();
       this.spawnProjectile(c.x, c.y, aim.x - c.x, aim.y - c.y, a, dmg, a.rangePx * 1.15, this.paletteFor(c.def).accent, 'RIFLE', false, 0, this.commanderDef.passive === 'GUNNERY');
+      this.cue('SHOT', c.x, c.y, 0.8);
       c.cooldown = Math.max(0.02, a.cooldownSec - windup);
       return;
     }
@@ -525,7 +639,7 @@ export class SurvivorEngine {
   private spawnMember(s: SquadState): SquadMemberState {
     const def = s.def;
     const c = this.commander;
-    const hpMult = 1 + 0.15 * this.moduleLevel('ARMOR');
+    const hpMult = this.hpMul();
     const actor = this.makeActor(c.x + (this.rng() - 0.5) * 8, c.y + (this.rng() - 0.5) * 8, def.radius, def.hp * hpMult, def.shield);
     const m: SquadMemberState = {
       ...actor,
@@ -586,7 +700,7 @@ export class SurvivorEngine {
       m.alive = false;
       m.hp = 0;
     }
-    const hpMult = 1 + 0.15 * this.moduleLevel('ARMOR');
+    const hpMult = this.hpMul();
     for (const m of keep) {
       m.def = into;
       m.radius = into.radius;
@@ -604,7 +718,7 @@ export class SurvivorEngine {
 
   /** 강화 장갑 레벨 변화 시 최대 체력 재계산 */
   private refreshMaxHp(): void {
-    const hpMult = 1 + 0.15 * this.moduleLevel('ARMOR');
+    const hpMult = this.hpMul();
     for (const m of this.squad) {
       const next = m.baseMaxHp * hpMult;
       m.hp += next - m.maxHp;
@@ -638,6 +752,18 @@ export class SurvivorEngine {
   }
 
   private updateReinforcements(dt: number): void {
+    if (this.hasRelic('RESERVE_TROOPS')) {
+      this.reserveTimer += dt;
+      if (this.reserveTimer >= RELIC_RESERVE_INTERVAL_SEC) {
+        this.reserveTimer = 0;
+        const target = this.squads.find((o) => this.missingInSquad(o) > 0);
+        if (target) {
+          const m = this.spawnMember(target);
+          this.addEffect('LEVEL', m.x, m.y, 0, 12, 0, 0.5, '#ffcf4a');
+          this.reassignSlots();
+        }
+      }
+    }
     for (const s of this.squads) {
       const interval = s.def.reinforceIntervalSec;
       if (!interval || this.aliveInSquad(s.key) === 0) {
@@ -668,6 +794,7 @@ export class SurvivorEngine {
       const m = this.squad[i];
       if (!m.alive) {
         this.addEffect('DEATH', m.x, m.y, 0, 10, 0, 0.5, this.paletteFor(m.def).primary);
+        this.cue('MEMBER_DOWN', m.x, m.y, 1);
         this.squad.splice(i, 1);
         removed = true;
       }
@@ -686,8 +813,10 @@ export class SurvivorEngine {
     const rapid = 1 - 0.07 * this.moduleLevel('RAPID');
     const rangeMul = (1 + 0.08 * this.moduleLevel('SCOPE')) * (entrenched ? ENTRENCH_RANGE_MUL : 1);
     // 돌격 지휘관은 이동 중에도 포진 공격력 보너스를 유지한다 (사거리 보너스는 정지 시만)
-    const entrenchDmg = entrenched || passive === 'VANGUARD' ? ENTRENCH_DAMAGE_MUL : 1;
-    const coreMul = (1 + 0.1 * this.moduleLevel('CORE')) * this.overchargeMul;
+    const entrenchBonus = this.hasRelic('FORTRESS_DOCTRINE') ? RELIC_FORTRESS_ENTRENCH_DMG : ENTRENCH_DAMAGE_MUL;
+    const entrenchDmg = entrenched || passive === 'VANGUARD' ? entrenchBonus : 1;
+    const datalink = this.hasRelic('DATALINK') ? RELIC_DATALINK_TEMPO : 1;
+    const coreMul = this.damageMul();
     const critChance = 0.05 * this.moduleLevel('SCOPE');
     const speedMul = this.speedMul;
 
@@ -753,7 +882,7 @@ export class SurvivorEngine {
       // 공격: 쿨다운 완료 + 표적 확인 → 예비동작 → 발동 (연속 분사형은 분사 → 냉각)
       m.attackFlashSec = Math.max(0, m.attackFlashSec - dt);
       const overdrive = passive === 'FORTIFY' && entrenched && a.style === 'CHAIN' ? FORTIFY_OVERDRIVE_MUL : 1;
-      const tempo = overdrive;
+      const tempo = overdrive * datalink;
       const computeDmg = (): number => {
         let dmg = a.damage * squadLevelDamageMult(sqLevel) * coreMul * entrenchDmg;
         if (a.style !== 'HEAL' && critChance > 0 && this.rng() < critChance) {
@@ -770,6 +899,9 @@ export class SurvivorEngine {
           // 분사 중에는 표적이 잠시 없어도 화염 줄기를 유지하고, 장판은 4판정마다 남긴다
           this.performSquadAttack(m, a, computeDmg(), range, m.channelTicks % 4 === 1);
           m.attackFlashSec = ATTACK_RELEASE_SEC;
+          if (m.channelTicks % 4 === 1) {
+            this.cue('FLAME', m.x, m.y, 0.6);
+          }
         }
         if (m.channelSec <= 0) {
           m.channelSec = 0;
@@ -807,15 +939,39 @@ export class SurvivorEngine {
         m.channelTicks = 1;
         this.performSquadAttack(m, a, computeDmg(), range, true);
         m.attackFlashSec = ATTACK_RELEASE_SEC;
+        this.cue('FLAME', m.x, m.y, 0.8);
         continue;
       }
       if (this.performSquadAttack(m, a, computeDmg(), range)) {
         m.cooldown = Math.max(0.02, cdFull - windup);
         m.attackFlashSec = ATTACK_RELEASE_SEC;
+        this.cueSquadAttack(m, a);
       } else {
         // 예비동작 사이 표적이 사라짐: 잠시 뒤 다시 노린다
         m.cooldown = 0.1;
       }
+    }
+  }
+
+  private cueSquadAttack(m: SquadMemberState, a: AttackProfile): void {
+    switch (a.style) {
+      case 'PROJECTILE':
+      case 'PIERCE': {
+        const heavy = !!a.splashRadiusPx || m.def.sprite === 'SNIPER';
+        this.cue(heavy ? 'HEAVY_SHOT' : 'SHOT', m.x, m.y, heavy ? 1 : 0.6);
+        return;
+      }
+      case 'CHAIN':
+        this.cue('ZAP', m.x, m.y, 0.8);
+        return;
+      case 'MELEE':
+        this.cue('MELEE', m.x, m.y, 0.7);
+        return;
+      case 'TURRET':
+        this.cue('TURRET', m.x, m.y, 0.8);
+        return;
+      default:
+        return;
     }
   }
 
@@ -966,7 +1122,9 @@ export class SurvivorEngine {
           const ang = base + (k - (shots - 1) / 2) * spread;
           const dx = Math.cos(ang);
           const dy = Math.sin(ang);
-          const pierceBonus = this.commanderDef.passive === 'GUNNERY' && !splashA.splashRadiusPx ? GUNNERY_PIERCE_BONUS : 0;
+          const pierceBonus = splashA.splashRadiusPx
+            ? 0
+            : (this.commanderDef.passive === 'GUNNERY' ? GUNNERY_PIERCE_BONUS : 0) + (this.hasRelic('AP_ROUNDS') ? 1 : 0);
           this.spawnProjectile(m.x, m.y, dx, dy, splashA, dmg, range, projCol, visual, evolved, pierceBonus);
           if (visual === 'SNIPER' || visual === 'EXECUTIONER') {
             const trailLen = Math.min(range * 0.65, visual === 'EXECUTIONER' ? 96 : 68);
@@ -1191,6 +1349,7 @@ export class SurvivorEngine {
             b.y = b.py = c.y + Math.sin(a) * this.spawnRadius * 0.6;
           }
           this.boss = b;
+          this.cue('BOSS_SPAWN', b.x, b.y, ev.kind === 'BOSS' ? 1.4 : 1);
           if (ev.kind === 'BOSS') {
             b.isFinalBoss = true;
             this.finalBoss = b;
@@ -1229,6 +1388,14 @@ export class SurvivorEngine {
   public announce(text: string): void {
     this.banner = text;
     this.bannerSec = 3;
+    this.cue('ALERT', this.commander.x, this.commander.y, 1);
+  }
+
+  /** 연출 신호 남기기 (상한 96: 소비하지 않는 헤드리스 실행에서도 메모리가 늘지 않는다) */
+  private cue(kind: CueKind, x: number, y: number, power = 1): void {
+    if (this.cues.length < 96) {
+      this.cues.push({ kind, x, y, power });
+    }
   }
 
   /** 화면 밖 원형 경계. 이동 중이면 진행 방향 앞쪽에 가중치를 둔다. */
@@ -1340,6 +1507,17 @@ export class SurvivorEngine {
         });
       },
       addHazard: (x, y, r, arm, life, dps, burst, color) => this.addHazard(x, y, r, arm, life, dps, burst, color),
+      countEnemiesNear: (x, y, r, behavior) => {
+        const cand = this.hash.query(x, y, r, this.scratch2);
+        let n = 0;
+        for (let k = 0; k < cand.length; k += 1) {
+          const o = this.enemies[cand[k]];
+          if (o && o.alive && o.behavior === behavior && (o.x - x) ** 2 + (o.y - y) ** 2 <= r * r) {
+            n += 1;
+          }
+        }
+        return n;
+      },
       shieldEnemiesNear: (x, y, r, amount) => {
         for (const o of this.enemies) {
           if (o.alive && !o.isBoss && Math.hypot(o.x - x, o.y - y) <= r) {
@@ -1633,6 +1811,7 @@ export class SurvivorEngine {
       }
       this.kills += 1;
       this.addEffect('DEATH', e.x, e.y, 0, e.radius + 2, 0, 0.35, e.def.palette.primary);
+      this.cue(e.isBoss ? 'BOSS_DOWN' : e.isElite ? 'ELITE_DOWN' : 'ENEMY_DOWN', e.x, e.y, e.isBoss ? (e.isFinalBoss ? 1.6 : 1.2) : 0.5);
       if (e.def.xp > 0) {
         this.dropGem(e.x, e.y, e.def.xp * (e.isElite ? 8 : 1));
       }
@@ -1642,7 +1821,12 @@ export class SurvivorEngine {
       if (e.isBoss && !e.isFinalBoss) {
         this.chests.push({ id: this.nextId++, x: e.x - 8, y: e.y, alive: true });
         this.chests.push({ id: this.nextId++, x: e.x + 8, y: e.y, alive: true });
-        this.announce(`${e.def.name} 격파! 보급 상자 2개`);
+        this.minibossKills += 1;
+        this.pendingRelics += 1;
+        this.announce(`${e.def.name} 격파! 유물 획득 · 보급 상자 2개`);
+      }
+      if (this.hasRelic('CHAIN_REACTION') && !e.isBoss && this.rng() < RELIC_CHAIN_CHANCE) {
+        this.explode(e.x, e.y, RELIC_CHAIN_RADIUS, 14 * this.damageMul(), 0, 0);
       }
       const splits = e.behavior === 'SPLITTER' ? 3 : 0;
       const affixSplits = e.affixes.includes('SPLIT') ? 4 : 0;
@@ -1794,6 +1978,7 @@ export class SurvivorEngine {
 
   private explode(x: number, y: number, r: number, dmg: number, burnDps: number, burnSec: number, evolved = false): void {
     this.damageEnemiesInRadius(x, y, r, dmg);
+    this.cue('EXPLOSION', x, y, Math.min(1.5, r / 28));
     this.addEffect('BOOM', x, y, 0, r, 0, 0.34, evolved ? '#ffcf4a' : '#ffb347', x, y, evolved);
     if (burnDps > 0) {
       this.addZone(x, y, r * 0.8, burnDps, burnSec, evolved ? 'PLASMA' : 'FIRE');
@@ -1801,8 +1986,11 @@ export class SurvivorEngine {
   }
 
   private updateTurrets(dt: number): void {
-    const overdrive = this.commanderDef.passive === 'FORTIFY' && this.isEntrenched ? FORTIFY_OVERDRIVE_MUL : 1;
+    const overdrive =
+      (this.commanderDef.passive === 'FORTIFY' && this.isEntrenched ? FORTIFY_OVERDRIVE_MUL : 1) *
+      (this.hasRelic('DATALINK') ? RELIC_DATALINK_TEMPO : 1);
     const areaMul = 1 + 0.1 * this.moduleLevel('AREA');
+    const apRounds = this.hasRelic('AP_ROUNDS') ? 1 : 0;
     let w = 0;
     for (let i = 0; i < this.turrets.length; i += 1) {
       const t = this.turrets[i];
@@ -1840,10 +2028,12 @@ export class SurvivorEngine {
             tp.rangePx,
             t.evolved ? '#ffcf4a' : '#9fe8ff',
             grenade ? 'MORTAR' : t.evolved ? 'GATLING' : 'RIFLE',
-            t.evolved
+            t.evolved,
+            grenade ? 0 : apRounds
           );
           t.flashSec = 0.1;
           t.fireCd = tp.fireCooldownSec;
+          this.cue(grenade ? 'HEAVY_SHOT' : 'SHOT', t.x, t.y, 0.4);
         } else {
           t.fireCd = 0.1;
         }
@@ -1921,7 +2111,8 @@ export class SurvivorEngine {
     }
     e.hp -= amount;
     e.hitFlashSec = 0.1;
-    if (executePct > 0 && !e.isBoss && e.hp > 0 && e.hp / e.maxHp <= executePct) {
+    const execPct = this.hasRelic('EXECUTION_PROTOCOL') ? Math.max(executePct, RELIC_EXECUTE_PCT) : executePct;
+    if (execPct > 0 && !e.isBoss && e.hp > 0 && e.hp / e.maxHp <= execPct) {
       e.hp = 0;
       this.addEffect('EXECUTE', e.x, e.y, 0, e.radius + 9, 0, 0.3, '#ff3858', e.x, e.y, true);
     }
@@ -1985,6 +2176,12 @@ export class SurvivorEngine {
     let rest = dmg;
     if (this.commanderDef.passive === 'VANGUARD' && 'squadKey' in a && (a as SquadMemberState).def.role === 'FRONT') {
       rest *= VANGUARD_FRONT_DAMAGE_TAKEN_MUL;
+    }
+    if (this.hasRelic('REACTIVE_PLATING')) {
+      rest *= RELIC_PLATING_TAKEN;
+    }
+    if (a === this.commander) {
+      this.cue('COMMANDER_HIT', a.x, a.y, Math.min(1.5, (rest / Math.max(1, a.maxHp)) * 8));
     }
     if (a.shield > 0) {
       const absorbed = Math.min(a.shield, rest);
@@ -2115,6 +2312,7 @@ export class SurvivorEngine {
       g.magnetized = r.magnetized;
       if (r.collected) {
         this.gainXp(g.value);
+        this.cue('PICKUP', g.x, g.y, Math.min(1, g.value / 8));
       } else {
         this.gems[w++] = g;
       }
@@ -2134,7 +2332,7 @@ export class SurvivorEngine {
   }
 
   private gainXp(amount: number): void {
-    this.xp += amount;
+    this.xp += amount * this.meta.xpMul * (this.hasRelic('SALVAGE_DRONE') ? RELIC_SALVAGE_XP : 1);
     while (this.xp >= this.xpToNext) {
       this.xp -= this.xpToNext;
       this.level += 1;
@@ -2147,15 +2345,35 @@ export class SurvivorEngine {
     if (this.phase !== 'RUNNING') {
       return;
     }
+    if (this.pendingRelics > 0) {
+      this.pendingRelics -= 1;
+      const pool = getAllRelics()
+        .map((r) => r.id)
+        .filter((id) => !this.relics.includes(id));
+      const offers: RelicId[] = [];
+      while (offers.length < RELIC_CHOICES && pool.length > 0) {
+        offers.push(pool.splice(Math.floor(this.rng() * pool.length), 1)[0]);
+      }
+      if (offers.length > 0) {
+        this.relicOffers = offers;
+        this.phase = 'RELIC';
+        this.cue('RELIC', this.commander.x, this.commander.y, 1);
+        this.addEffect('EVOLVE', this.commander.x, this.commander.y, 0, 24, 0, 0.8, '#ffcf4a');
+        return;
+      }
+    }
     if (this.pendingChests > 0) {
       this.pendingChests -= 1;
       this.chestResult = this.openChest();
       this.phase = 'CHEST';
+      this.cue(this.chestResult?.kind === 'EVOLVE' ? 'EVOLVE' : 'CHEST', this.commander.x, this.commander.y, 1);
       return;
     }
     if (this.pendingLevelUps > 0) {
       this.offers = this.rollOffers(3);
+      this.rerollsLeft = this.rerollsPerLevelUp;
       this.phase = 'LEVEL_UP';
+      this.cue('LEVEL_UP', this.commander.x, this.commander.y, 1);
       this.addEffect('LEVEL', this.commander.x, this.commander.y, 0, 30, 0, 0.6, '#f2e27a');
     }
   }
@@ -2166,7 +2384,8 @@ export class SurvivorEngine {
       const fromId = this.evolveSquad(ready);
       return { kind: 'EVOLVE', fromId, intoId: ready.def.id };
     }
-    const offer = this.rollOffers(1).find((o) => o.kind !== 'RESUPPLY' && o.kind !== 'OVERCHARGE');
+    // 보급 상자는 보유 중인 분대·모듈의 강화만 준다 (새 분대·모듈은 레벨업에서만)
+    const offer = this.rollOffers(1, { ownedOnly: true }).find((o) => o.kind !== 'RESUPPLY' && o.kind !== 'OVERCHARGE');
     if (offer) {
       this.applyOffer(offer);
       return { kind: 'UPGRADE', offer };
@@ -2193,8 +2412,9 @@ export class SurvivorEngine {
     };
     const c = this.commander;
     regenShield(c);
-    if (this.regenPerSec > 0 && c.alive) {
-      c.hp = Math.min(c.maxHp, c.hp + this.regenPerSec * dt);
+    const regen = this.regenPerSec + (this.hasRelic('NANO_MEDKIT') ? RELIC_MEDKIT_REGEN : 0);
+    if (regen > 0 && c.alive) {
+      c.hp = Math.min(c.maxHp, c.hp + regen * dt);
     }
     for (const m of this.squad) {
       regenShield(m);
@@ -2234,7 +2454,14 @@ export class SurvivorEngine {
 
   // ─────────────────────────── 레벨업 선택지 ───────────────────────────
 
-  private rollOffers(count: number): LevelUpOffer[] {
+  /**
+   * 레벨업·상자 선택지 뽑기.
+   * ownedOnly: 보유 중인 분대·모듈의 레벨업(+증원)만 (보급 상자용).
+   * exclude: 이미 보이는 선택지와 같은 것은 다시 뽑지 않는다 (다시 뽑기용).
+   */
+  private rollOffers(count: number, opts: { ownedOnly?: boolean; exclude?: readonly LevelUpOffer[] } = {}): LevelUpOffer[] {
+    const ownedOnly = !!opts.ownedOnly;
+    const excluded = new Set((opts.exclude ?? []).map(offerKey));
     const pool: { offer: LevelUpOffer; weight: number }[] = [];
     const ownedSquads = new Set(this.squads.map((s) => s.key));
     const ownedModules = new Set(this.modules.map((m) => m.id));
@@ -2245,7 +2472,7 @@ export class SurvivorEngine {
       }
     }
 
-    if (this.squads.length < MAX_SQUADS) {
+    if (!ownedOnly && this.squads.length < MAX_SQUADS) {
       for (const unitId of this.faction.unitPool) {
         if (!ownedSquads.has(unitId)) {
           pool.push({ offer: { kind: 'NEW_SQUAD', unitId }, weight: 2.6 });
@@ -2257,7 +2484,7 @@ export class SurvivorEngine {
         pool.push({ offer: { kind: 'SQUAD_LEVEL', unitId: s.key, nextLevel: s.level + 1 }, weight: 3 });
       }
     }
-    if (this.modules.length < MAX_MODULES) {
+    if (!ownedOnly && this.modules.length < MAX_MODULES) {
       for (const id of ALL_MODULE_IDS) {
         if (!ownedModules.has(id)) {
           pool.push({ offer: { kind: 'NEW_MODULE', moduleId: id }, weight: wantedModules.has(id) ? 3.2 : 1.6 });
@@ -2272,6 +2499,11 @@ export class SurvivorEngine {
     const missing = this.totalMissing();
     if (missing >= 2) {
       pool.push({ offer: { kind: 'REINFORCE', missing }, weight: 1 + missing * 0.4 });
+    }
+    if (excluded.size > 0) {
+      for (let k = pool.length - 1; k >= 0; k -= 1) {
+        if (excluded.has(offerKey(pool[k].offer))) pool.splice(k, 1);
+      }
     }
 
     const picked: LevelUpOffer[] = [];
@@ -2384,6 +2616,20 @@ export class SurvivorEngine {
       attackFlashSec: 0,
       windupSec: 0,
     };
+  }
+}
+
+/** 선택지 동일성 키: 종류 + 대상 (레벨 숫자는 무시) */
+export function offerKey(o: LevelUpOffer): string {
+  switch (o.kind) {
+    case 'NEW_SQUAD':
+    case 'SQUAD_LEVEL':
+      return `${o.kind}:${o.unitId}`;
+    case 'NEW_MODULE':
+    case 'MODULE_LEVEL':
+      return `${o.kind}:${o.moduleId}`;
+    default:
+      return o.kind;
   }
 }
 

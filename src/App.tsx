@@ -3,6 +3,8 @@ import { SurvivorApp } from './core/SurvivorApp';
 import { useSurvivorStore } from './store/useSurvivorStore';
 import { ChestModal } from './ui/ChestModal';
 import { LevelUpModal } from './ui/LevelUpModal';
+import { RelicModal } from './ui/RelicModal';
+import { useMuteHotkey } from './ui/SettingsToggles';
 import { ResultModal } from './ui/ResultModal';
 import { SurvivorHUD } from './ui/SurvivorHUD';
 import { SurvivorTitle } from './ui/SurvivorTitle';
@@ -11,6 +13,7 @@ import { VirtualJoystick } from './ui/VirtualJoystick';
 export const App: React.FC = () => {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const screen = useSurvivorStore((s) => s.screen);
+  useMuteHotkey();
 
   useEffect(() => {
     const host = canvasHostRef.current;
@@ -35,6 +38,7 @@ export const App: React.FC = () => {
             <SurvivorHUD />
             <LevelUpModal />
             <ChestModal />
+            <RelicModal />
             <ResultModal />
           </>
         )}

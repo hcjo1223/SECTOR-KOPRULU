@@ -70,6 +70,7 @@
   {
     "id": "matron",
     "name": "블라이트 모체",
+    "behavior": "MATRON",
     "hp": 9000,
     "damage": 35,
     "contactCooldownSec": 1.0,
@@ -82,8 +83,7 @@
       "primary": "#8a2a4a",
       "secondary": "#3e1022",
       "accent": "#ffd040"
-    },
-    "behavior": "MATRON"
+    }
   },
   {
     "id": "charger",
@@ -232,6 +232,7 @@
   {
     "id": "clawling",
     "name": "군체 갈퀴충",
+    "behavior": "SWARM",
     "hp": 16,
     "damage": 5,
     "contactCooldownSec": 0.7,
@@ -249,7 +250,7 @@
   {
     "id": "hive_spiker",
     "name": "군체 가시투척충",
-    "behavior": "SPITTER",
+    "behavior": "VOLLEY",
     "hp": 26,
     "damage": 6,
     "contactCooldownSec": 1.0,
@@ -322,7 +323,7 @@
   {
     "id": "lumen_warden",
     "name": "교단 수호기사",
-    "behavior": "SHELLED",
+    "behavior": "WARDEN",
     "hp": 70,
     "damage": 12,
     "contactCooldownSec": 1.0,
@@ -340,7 +341,7 @@
   {
     "id": "lumen_prism",
     "name": "교단 프리즘 포대",
-    "behavior": "SPITTER",
+    "behavior": "PRISM",
     "hp": 40,
     "damage": 9,
     "contactCooldownSec": 1.0,
